@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { t } from '@ai-notes/i18n';
 import './styles.css';
@@ -16,6 +16,8 @@ function App() {
   const [folders, setFolders] = useState([]);
   const [selected, setSelected] = useState(null);
   const [recording, setRecording] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
   const recorder = useRef(null);
   const chunks = useRef([]);
   const tr = (key) => t(lang, key);
@@ -27,6 +29,7 @@ function App() {
   async function register(e) { e.preventDefault(); const form = new FormData(e.currentTarget); await api('/api/auth/passkey/register/options', { method: 'POST', body: JSON.stringify({ username: form.get('username'), displayName: form.get('displayName'), preferredLanguage: lang }) }); const verified = await api('/api/auth/passkey/register/verify', { method: 'POST', body: JSON.stringify({ id: `dev-${crypto.randomUUID()}` }) }); setUser(verified.data.user); refresh(); }
   async function createNote(e) { e.preventDefault(); const form = new FormData(e.currentTarget); await api('/api/notes', { method: 'POST', body: JSON.stringify({ title: form.get('title'), body: form.get('body'), folderId: form.get('folderId') || null }) }); e.currentTarget.reset(); refresh(); }
   async function generate(note, type) { const r = await api(`/api/notes/${note.id}/${type}`, { method: 'POST', body: '{}' }); setSelected(r.data); refresh(); }
+  async function searchWeb(e) { e.preventDefault(); const form = new FormData(e.currentTarget); const query = form.get('q'); if (!query) return; setSearchLoading(true); const r = await api(`/api/search?q=${encodeURIComponent(query)}`); setSearchResults(r.success ? r.data.results : []); setSearchLoading(false); }
   async function startRecording() { const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); chunks.current = []; recorder.current = new MediaRecorder(stream); recorder.current.ondataavailable = e => chunks.current.push(e.data); recorder.current.onstop = async () => { const blob = new Blob(chunks.current, { type: 'audio/webm' }); const data = new FormData(); data.append('audio', blob, 'voice-note.webm'); const res = await fetch(`${API}/api/recordings`, { method: 'POST', credentials: 'include', body: data }); const json = await res.json(); setSelected(json.data.note); refresh(); }; recorder.current.start(); setRecording(true); }
   function stopRecording() { recorder.current?.stop(); setRecording(false); }
 
@@ -36,7 +39,7 @@ function App() {
     {user && <><section className="toolbar"><button className="record" onClick={recording ? stopRecording : startRecording}>{recording ? tr('recording.stop') : tr('recording.start')}</button><span>{user.displayName}</span></section>
     <section className="grid"><aside className="card"><h2>{tr('notes.folder')}</h2>{folders.map(f=><p key={f.id}>📁 {f.name}</p>)}<form onSubmit={async e=>{e.preventDefault(); await api('/api/folders',{method:'POST',body:JSON.stringify({name:new FormData(e.currentTarget).get('name')})}); e.currentTarget.reset(); refresh();}}><input name="name" placeholder="Work / Trabajo"/><button>+</button></form></aside>
     <section className="card"><h2>{tr('notes.newNote')}</h2><form onSubmit={createNote}><input name="title" placeholder="Title"/><textarea name="body" placeholder="Write a note..."></textarea><select name="folderId"><option value="">Uncategorized</option>{folders.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</select><button>{tr('notes.save')}</button></form><div>{notes.map(n=><button className="note" key={n.id} onClick={()=>setSelected(n)}>{n.title}<small>{n.transcriptionStatus}</small></button>)}</div></section>
-    <section className="card detail">{selected ? <><h2>{selected.title}</h2><p>{selected.body}</p><pre>{selected.transcript}</pre><button onClick={()=>generate(selected,'summary')}>{tr('ai.generateSummary')}</button><button onClick={()=>generate(selected,'key-points')}>{tr('ai.keyPoints')}</button><button onClick={()=>generate(selected,'action-items')}>{tr('ai.actionItems')}</button><button onClick={()=>generate(selected,'mind-map')}>{tr('ai.mindMap')}</button><h3>AI</h3><p>{selected.summary}</p><pre>{JSON.stringify(selected.keyPointsJson || selected.actionItemsJson || selected.mindMapJson, null, 2)}</pre></> : <p>Select a note</p>}</section></section></>}
+    <section className="card detail">{selected ? <><h2>{selected.title}</h2><p>{selected.body}</p><pre>{selected.transcript}</pre><button onClick={()=>generate(selected,'summary')}>{tr('ai.generateSummary')}</button><button onClick={()=>generate(selected,'key-points')}>{tr('ai.keyPoints')}</button><button onClick={()=>generate(selected,'action-items')}>{tr('ai.actionItems')}</button><button onClick={()=>generate(selected,'mind-map')}>{tr('ai.mindMap')}</button><h3>AI</h3><p>{selected.summary}</p><pre>{JSON.stringify(selected.keyPointsJson || selected.actionItemsJson || selected.mindMapJson, null, 2)}</pre><section className="searchBox"><h3>{tr('search.title')}</h3><form onSubmit={searchWeb} className="searchForm"><input name="q" placeholder={tr('search.placeholder')} defaultValue={selected.title}/><button>{searchLoading ? '…' : tr('search.submit')}</button></form>{searchResults.length === 0 ? <p>{tr('search.empty')}</p> : <div className="searchResults">{searchResults.map(result=><a key={result.url} href={result.url} target="_blank" rel="noreferrer"><strong>{result.title}</strong><span>{result.snippet}</span></a>)}</div>}</section></> : <p>Select a note</p>}</section></section></>}
   </main>;
 }
 

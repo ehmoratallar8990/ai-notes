@@ -15,7 +15,11 @@ export const messages = {
     'ai.keyPoints': 'Key points',
     'ai.actionItems': 'Action items',
     'ai.mindMap': 'Mind map',
-    'extension.autoRecord': 'Auto-record meetings'
+    'extension.autoRecord': 'Auto-record meetings',
+    'search.title': 'DuckDuckGo search',
+    'search.placeholder': 'Search the web for context...',
+    'search.submit': 'Search',
+    'search.empty': 'No search results yet.'
   },
   es: {
     'auth.continueWithPasskey': 'Continuar con passkey',
@@ -33,7 +37,11 @@ export const messages = {
     'ai.keyPoints': 'Puntos clave',
     'ai.actionItems': 'Tareas pendientes',
     'ai.mindMap': 'Mapa mental',
-    'extension.autoRecord': 'Auto-grabar reuniones'
+    'extension.autoRecord': 'Auto-grabar reuniones',
+    'search.title': 'Buscar con DuckDuckGo',
+    'search.placeholder': 'Busca contexto en la web...',
+    'search.submit': 'Buscar',
+    'search.empty': 'Sin resultados todavía.'
   }
 };
 export function t(language, key) { return messages[language]?.[key] || messages.en[key] || key; }

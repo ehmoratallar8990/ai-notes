@@ -9,6 +9,7 @@ services:
       ORIGIN: ${ORIGIN:-http://localhost:8080}
       DB_CLIENT: ${DB_CLIENT:-memory}
       AI_PROVIDER: ${AI_PROVIDER:-mock}
+      SEARCH_PROVIDER: ${SEARCH_PROVIDER:-duckduckgo}
       TRANSCRIPTION_PROVIDER: ${TRANSCRIPTION_PROVIDER:-mock}
       SESSION_SECRET: ${SESSION_SECRET:-dev-secret-change-me}
     volumes:

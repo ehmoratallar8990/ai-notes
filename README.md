@@ -9,6 +9,7 @@ Free/self-hostable AI note-taking PWA + Express API + Chrome extension, written 
 - Passkey-oriented auth with discoverable credentials: login options do **not** require email before opening the passkey modal
 - Free/mock transcription provider, ready for local Whisper/Vosk integration
 - Free/mock AI provider, ready for Ollama/llama.cpp/local OpenAI-compatible integration
+- Free DuckDuckGo web search provider for note context lookup
 - English and Spanish UI strings
 - Chrome extension MVP for opt-in meeting tab recording and upload
 
@@ -107,7 +108,12 @@ Environment:
 ```bash
 TRANSCRIPTION_PROVIDER=mock
 AI_PROVIDER=mock
+SEARCH_PROVIDER=duckduckgo
 ```
+
+Search provider:
+
+- `duckduckgo` — included, uses DuckDuckGo's free Instant Answer API and requires no API key
 
 ## API endpoints
 
@@ -149,6 +155,12 @@ Recordings:
 
 ```txt
 POST /api/recordings
+```
+
+Search:
+
+```txt
+GET /api/search?q=your+query
 ```
 
 Extension:

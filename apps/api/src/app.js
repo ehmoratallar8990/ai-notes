@@ -8,8 +8,10 @@ import { foldersRouter } from './routes/folders.js';
 import { notesRouter } from './routes/notes.js';
 import { recordingsRouter } from './routes/recordings.js';
 import { extensionRouter } from './routes/extension.js';
+import { searchRouter } from './routes/search.js';
+import { createSearchProvider } from './services/searchService.js';
 
-export function createApp({ store = defaultStore } = {}) {
+export function createApp({ store = defaultStore, searchProvider = createSearchProvider() } = {}) {
   const app = express();
   app.use(cors({ origin: process.env.ORIGIN || 'http://localhost:5173', credentials: true }));
   app.use(express.json({ limit: '10mb' }));
@@ -22,5 +24,6 @@ export function createApp({ store = defaultStore } = {}) {
   app.use('/api/notes', notesRouter(store));
   app.use('/api/recordings', recordingsRouter(store));
   app.use('/api/extension', extensionRouter(store));
+  app.use('/api/search', searchRouter(searchProvider));
   return app;
 }
