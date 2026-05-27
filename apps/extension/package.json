@@ -1,0 +1,8 @@
+{
+  "name": "@ai-notes/extension",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "rm -rf dist && mkdir -p dist && cp manifest.json dist/ && cp -R src/* dist/"
+  }
+}

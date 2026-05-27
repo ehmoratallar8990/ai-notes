@@ -1,0 +1,11 @@
+const $ = id => document.getElementById(id);
+const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+const saved = await chrome.storage.local.get(['backendUrl', 'autoRecord']);
+$('backendUrl').value = saved.backendUrl || 'http://localhost:3001';
+$('autoRecord').checked = Boolean(saved.autoRecord);
+$('backendUrl').addEventListener('change', () => chrome.storage.local.set({ backendUrl: $('backendUrl').value }));
+$('autoRecord').addEventListener('change', () => chrome.storage.local.set({ autoRecord: $('autoRecord').checked }));
+$('start').addEventListener('click', async () => { const res = await chrome.runtime.sendMessage({ type: 'START_RECORDING', tabId: tab.id, meetingUrl: tab.url }); $('status').textContent = res.success ? 'Recording…' : 'Could not start'; });
+$('stop').addEventListener('click', async () => { await chrome.runtime.sendMessage({ type: 'STOP_RECORDING' }); $('status').textContent = 'Uploading / idle'; });
+const status = await chrome.runtime.sendMessage({ type: 'STATUS' });
+$('status').textContent = status.recording ? 'Recording…' : 'Idle';

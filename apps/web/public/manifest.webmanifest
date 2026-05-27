@@ -1,0 +1,9 @@
+{
+  "name": "AI Notes",
+  "short_name": "AI Notes",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#10121a",
+  "theme_color": "#6c5ce7",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

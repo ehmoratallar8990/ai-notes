@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "AI Notes Meeting Recorder",
+  "version": "0.1.0",
+  "description": "Opt-in meeting recorder for AI Notes. Free/self-hosted backend.",
+  "permissions": ["storage", "tabs", "tabCapture", "activeTab", "scripting"],
+  "host_permissions": ["http://localhost:3001/*", "http://localhost:8080/*", "https://meet.google.com/*", "https://teams.microsoft.com/*", "https://*.zoom.us/wc/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_popup": "popup.html" }
+}
