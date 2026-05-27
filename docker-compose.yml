@@ -4,27 +4,27 @@ services:
       context: .
       dockerfile: docker/api.Dockerfile
     environment:
-      NODE_ENV: development
-      PORT: 3001
-      ORIGIN: http://localhost:8080
-      DB_CLIENT: memory
-      AI_PROVIDER: mock
-      TRANSCRIPTION_PROVIDER: mock
-      SESSION_SECRET: dev-secret-change-me
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${API_CONTAINER_PORT:-3001}
+      ORIGIN: ${ORIGIN:-http://localhost:8080}
+      DB_CLIENT: ${DB_CLIENT:-memory}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      TRANSCRIPTION_PROVIDER: ${TRANSCRIPTION_PROVIDER:-mock}
+      SESSION_SECRET: ${SESSION_SECRET:-dev-secret-change-me}
     volumes:
       - ./uploads:/app/uploads
     ports:
-      - "3001:3001"
+      - "${API_PORT:-3001}:${API_CONTAINER_PORT:-3001}"
   web:
     build:
       context: .
       dockerfile: docker/web.Dockerfile
     ports:
-      - "5173:5173"
+      - "${WEB_PORT:-5173}:5173"
   proxy:
     image: httpd:2.4
     depends_on: [api, web]
     ports:
-      - "8080:80"
+      - "${PROXY_PORT:-8080}:80"
     volumes:
       - ./docker/httpd.conf:/usr/local/apache2/conf/httpd.conf:ro

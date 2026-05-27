@@ -44,10 +44,13 @@ curl http://localhost:8080/api/health
 make docker-down
 ```
 
-Docker URLs:
+Docker URLs use `.env` values with safe fallbacks from `docker-compose.yml`:
 
-- Proxy/web: http://localhost:8080
-- API direct: http://localhost:3001/api/health
+- Proxy/web: `http://localhost:${PROXY_PORT:-8080}`
+- API direct: `http://localhost:${API_PORT:-3001}/api/health`
+- Web direct: `http://localhost:${WEB_PORT:-5173}`
+
+Copy `.env.example` to `.env` and adjust ports if needed.
 
 ## Chrome extension
 
