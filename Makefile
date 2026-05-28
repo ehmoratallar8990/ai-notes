@@ -13,11 +13,15 @@ test:
 lint:
 	npm run lint
 
-docker-up:
+up:
 	docker compose up -d --build
 
-docker-down:
+down:
 	docker compose down
+
+docker-up: up
+
+docker-down: down
 
 migrate:
 	npm run migrate --workspace apps/api

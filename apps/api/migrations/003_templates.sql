@@ -1,0 +1,8 @@
+CREATE TABLE templates (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  name VARCHAR(160) NOT NULL,
+  body TEXT,
+  tags JSON,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

@@ -1,5 +1,7 @@
 export const SUPPORTED_LANGUAGES = ['en', 'es'];
 export const TRANSCRIPTION_STATUSES = ['pending', 'processing', 'completed', 'failed'];
+export const AI_PROVIDERS = ['mock', 'ollama'];
+export const DEFAULT_AI_PROVIDER = 'mock';
 export const MEETING_URL_PATTERNS = [
   { platform: 'google-meet', pattern: /https:\/\/meet\.google\.com\// },
   { platform: 'teams', pattern: /https:\/\/teams\.microsoft\.com\// },

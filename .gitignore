@@ -6,4 +6,5 @@ coverage/
 .DS_Store
 *.log
 uploads/
+data/
 *.sqlite

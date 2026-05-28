@@ -2,25 +2,49 @@ import { randomUUID } from 'node:crypto';
 
 const now = () => new Date().toISOString();
 const clone = (value) => value ? JSON.parse(JSON.stringify(value)) : value;
+const sanitizeUser = (user) => {
+  if (!user) return null;
+  const { passwordHash, ...safeUser } = user;
+  return clone(safeUser);
+};
 
 export function createMemoryStore() {
   const db = {
-    users: [], passkeys: [], folders: [], notes: [], recordings: [], aiJobs: [], extensionPairingTokens: [], extensionSessions: []
-  };
+    users: [], passkeys: [], folders: [], notes: [], recordings: [], attachments: [], aiJobs: [], extensionPairingTokens: [], extensionSessions: [], templates: [], noteLinks: []}
+  ;
 
   return {
     db,
-    createUser({ username, displayName, preferredLanguage = 'en' }) {
-      const user = { id: randomUUID(), username, displayName, preferredLanguage, createdAt: now(), updatedAt: now() };
-      db.users.push(user); return clone(user);
+    createUser({ username, displayName, preferredLanguage = 'en', passwordHash = null }) {
+      const user = { id: randomUUID(), username, displayName, preferredLanguage, passwordHash, createdAt: now(), updatedAt: now() };
+      db.users.push(user);
+      return sanitizeUser(user);
     },
-    findUserById(id) { return clone(db.users.find(u => u.id === id) || null); },
-    findUserByUsername(username) { return clone(db.users.find(u => u.username === username) || null); },
+    findUserById(id) { return sanitizeUser(db.users.find(u => u.id === id) || null); },
+    findUserByUsername(username) { return sanitizeUser(db.users.find(u => u.username === username) || null); },
+    getUserRecordById(id) { return clone(db.users.find(u => u.id === id) || null); },
+    getUserRecordByUsername(username) { return clone(db.users.find(u => u.username === username) || null); },
+    updateUser(id, attrs) {
+      const user = db.users.find(u => u.id === id);
+      if (!user) return null;
+      for (const key of ['username', 'displayName', 'preferredLanguage', 'passwordHash']) {
+        if (Object.hasOwn(attrs, key) && attrs[key] !== undefined) user[key] = attrs[key];
+      }
+      user.updatedAt = now();
+      return sanitizeUser(user);
+    },
     createPasskey(userId, passkey) {
       const row = { id: randomUUID(), userId, createdAt: now(), lastUsedAt: null, ...passkey };
       db.passkeys.push(row); return clone(row);
     },
+    listPasskeysForUser(userId) { return clone(db.passkeys.filter(p => p.userId === userId)); },
     findPasskeyByCredentialId(credentialId) { return clone(db.passkeys.find(p => p.credentialId === credentialId) || null); },
+    updatePasskey(credentialId, attrs) {
+      const passkey = db.passkeys.find(p => p.credentialId === credentialId);
+      if (!passkey) return null;
+      Object.assign(passkey, attrs);
+      return clone(passkey);
+    },
     createFolder(userId, { name }) {
       const folder = { id: randomUUID(), userId, name, createdAt: now(), updatedAt: now() };
       db.folders.push(folder); return clone(folder);
@@ -37,22 +61,59 @@ export function createMemoryStore() {
     createNote(userId, attrs) {
       const note = {
         id: randomUUID(), userId, folderId: attrs.folderId || null, title: attrs.title || 'Untitled note', body: attrs.body || '',
-        transcript: attrs.transcript || '', transcriptionStatus: attrs.transcriptionStatus || 'pending', summary: '', keyPointsJson: [], actionItemsJson: [], mindMapJson: null,
+        transcript: attrs.transcript || '', transcriptionStatus: attrs.transcriptionStatus || 'pending',
+        transcriptSegments: Array.isArray(attrs.transcriptSegments) ? [...attrs.transcriptSegments] : [],
+        speakerCount: attrs.speakerCount || 0,
+        summary: '', keyPointsJson: [], actionItemsJson: [], mindMapJson: null,
+        pinned: attrs.pinned || false,
+        tags: Array.isArray(attrs.tags) ? [...attrs.tags] : [],
+        format: attrs.format || 'text',
         source: attrs.source || 'manual', meetingPlatform: attrs.meetingPlatform || null, meetingUrl: attrs.meetingUrl || null,
         createdAt: now(), updatedAt: now(), deletedAt: null
       };
       db.notes.push(note); return clone(note);
     },
-    listNotes(userId, { folderId, search } = {}) {
+    listNotes(userId, { folderId, search, tag, pinned } = {}) {
       let notes = db.notes.filter(n => n.userId === userId && !n.deletedAt);
       if (folderId) notes = notes.filter(n => n.folderId === folderId);
       if (search) notes = notes.filter(n => `${n.title} ${n.body} ${n.transcript}`.toLowerCase().includes(search.toLowerCase()));
-      return clone(notes.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)));
+      if (tag) notes = notes.filter(n => Array.isArray(n.tags) && n.tags.includes(tag));
+      if (pinned !== undefined) notes = notes.filter(n => pinned ? n.pinned : !n.pinned);
+      return clone(notes.sort((a, b) => {
+        if (a.pinned && !b.pinned) return -1;
+        if (!a.pinned && b.pinned) return 1;
+        return b.updatedAt.localeCompare(a.updatedAt);
+      }));
+    },
+    listTags(userId) {
+      const tagSet = new Set();
+      db.notes.filter(n => n.userId === userId && !n.deletedAt).forEach(n => {
+        if (Array.isArray(n.tags)) n.tags.forEach(tag => tagSet.add(tag));
+      });
+      return [...tagSet].sort();
+    },
+    listTasks(userId) {
+      const tasks = [];
+      db.notes.filter(n => n.userId === userId && !n.deletedAt).forEach(note => {
+        if (!Array.isArray(note.actionItemsJson)) return;
+        note.actionItemsJson.forEach((item, index) => {
+          if (item && !item.completed) {
+            tasks.push({
+              noteId: note.id,
+              noteTitle: note.title,
+              text: item.text || '',
+              dueDate: item.dueDate || null,
+              index
+            });
+          }
+        });
+      });
+      return clone(tasks);
     },
     getNote(userId, id) { return clone(db.notes.find(n => n.userId === userId && n.id === id && !n.deletedAt) || null); },
     updateNote(userId, id, attrs) {
       const note = db.notes.find(n => n.userId === userId && n.id === id && !n.deletedAt); if (!note) return null;
-      for (const key of ['folderId','title','body','transcript','transcriptionStatus','summary','keyPointsJson','actionItemsJson','mindMapJson']) {
+      for (const key of ['folderId','title','body','transcript','transcriptSegments','speakerCount','transcriptionStatus','summary','keyPointsJson','actionItemsJson','mindMapJson','pinned','tags','format']) {
         if (Object.hasOwn(attrs, key)) note[key] = attrs[key];
       }
       note.updatedAt = now(); return clone(note);
@@ -63,10 +124,58 @@ export function createMemoryStore() {
       db.recordings.push(recording); return clone(recording);
     },
     listRecordingsForNote(userId, noteId) { return clone(db.recordings.filter(r => r.userId === userId && r.noteId === noteId)); },
+    createAttachment(userId, attrs) {
+      const attachment = { id: randomUUID(), userId, createdAt: now(), ...attrs };
+      db.attachments.push(attachment); return clone(attachment);
+    },
+    listAttachmentsForNote(userId, noteId) { return clone(db.attachments.filter(a => a.userId === userId && a.noteId === noteId).sort((a, b) => b.createdAt.localeCompare(a.createdAt))); },
+    getAttachment(userId, id) { return clone(db.attachments.find(a => a.userId === userId && a.id === id) || null); },
+    deleteAttachment(userId, id) { const idx = db.attachments.findIndex(a => a.userId === userId && a.id === id); if (idx === -1) return false; db.attachments.splice(idx, 1); return true; },
     createExtensionSession(userId, tokenHash) {
       const session = { id: randomUUID(), userId, tokenHash, createdAt: now(), lastUsedAt: now(), revokedAt: null };
       db.extensionSessions.push(session); return clone(session);
-    }
+    },
+    setNoteLinks(userId, sourceNoteId, targetNoteIds) {
+      db.noteLinks = db.noteLinks.filter(l => l.sourceNoteId !== sourceNoteId);
+      for (const tid of targetNoteIds) {
+        const target = db.notes.find(n => n.userId === userId && n.id === tid && !n.deletedAt);
+        if (target) db.noteLinks.push({ id: randomUUID(), sourceNoteId, targetNoteId: tid, createdAt: now() });
+      }
+    },
+    getNoteLinks(userId, noteId) {
+      const targetIds = db.noteLinks.filter(l => l.sourceNoteId === noteId).map(l => l.targetNoteId);
+      return clone(db.notes.filter(n => n.userId === userId && !n.deletedAt && targetIds.includes(n.id)));
+    },
+    getNoteBacklinks(userId, noteId) {
+      const sourceIds = db.noteLinks.filter(l => l.targetNoteId === noteId).map(l => l.sourceNoteId);
+      return clone(db.notes.filter(n => n.userId === userId && !n.deletedAt && sourceIds.includes(n.id)));
+    },
+    deleteNoteLinksForNote(userId, noteId) {
+      db.noteLinks = db.noteLinks.filter(l => l.sourceNoteId !== noteId && l.targetNoteId !== noteId);
+      return true;
+    },
+    createTemplate(userId, { name, body, tags, meetingPlatform, meetingUrl }) {
+      const template = { id: randomUUID(), userId, name, body: body || '', tags: Array.isArray(tags) ? [...tags] : [], meetingPlatform: meetingPlatform || null, meetingUrl: meetingUrl || null, createdAt: now() };
+      db.templates.push(template); return clone(template);
+    },
+    listTemplates(userId) {
+      const userTemplates = db.templates.filter(t => t.userId === userId);
+      if (userTemplates.length === 0) {
+        const builtIns = [
+          { name: 'Meeting Notes', body: '# Meeting Notes\n\n## Date\n\n## Attendees\n\n## Agenda\n\n## Discussion\n\n## Action Items\n\n', tags: ['meeting'], meetingPlatform: null, meetingUrl: null },
+          { name: 'Daily Standup', body: '# Daily Standup\n\n## Yesterday\n\n## Today\n\n## Blockers\n\n', tags: ['standup'], meetingPlatform: null, meetingUrl: null },
+          { name: 'Project Brief', body: '# Project Brief\n\n## Overview\n\n## Goals\n\n## Timeline\n\n## Resources\n\n## Risks\n\n', tags: ['project'], meetingPlatform: null, meetingUrl: null }
+        ];
+        for (const bt of builtIns) {
+          const t = { id: randomUUID(), userId, ...bt, createdAt: now() };
+          db.templates.push(t);
+        }
+        return clone(db.templates.filter(t => t.userId === userId));
+      }
+      return clone(userTemplates.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+    },
+    getTemplate(userId, id) { return clone(db.templates.find(t => t.userId === userId && t.id === id) || null); },
+    deleteTemplate(userId, id) { const idx = db.templates.findIndex(t => t.userId === userId && t.id === id); if (idx === -1) return false; db.templates.splice(idx, 1); return true; }
   };
 }
 

@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import cookieSession from 'cookie-session';
-import { store as defaultStore } from './store/memoryStore.js';
+import { store as defaultStore } from './store/index.js';
 import { attachDevUser } from './middleware/auth.js';
 import { authRouter } from './routes/auth.js';
 import { foldersRouter } from './routes/folders.js';
@@ -9,6 +9,8 @@ import { notesRouter } from './routes/notes.js';
 import { recordingsRouter } from './routes/recordings.js';
 import { extensionRouter } from './routes/extension.js';
 import { searchRouter } from './routes/search.js';
+import { templatesRouter } from './routes/templates.js';
+import { attachmentsRouter } from './routes/attachments.js';
 import { createSearchProvider } from './services/searchService.js';
 
 export function createApp({ store = defaultStore, searchProvider = createSearchProvider() } = {}) {
@@ -22,8 +24,11 @@ export function createApp({ store = defaultStore, searchProvider = createSearchP
   app.use(attachDevUser(store));
   app.use('/api/folders', foldersRouter(store));
   app.use('/api/notes', notesRouter(store));
+  app.get('/api/tasks', (req, res) => res.json({ success: true, data: store.listTasks(req.session.userId) }));
   app.use('/api/recordings', recordingsRouter(store));
   app.use('/api/extension', extensionRouter(store));
+  app.use('/api/templates', templatesRouter(store));
+  app.use('/api/attachments', attachmentsRouter(store).router);
   app.use('/api/search', searchRouter(searchProvider));
   return app;
 }

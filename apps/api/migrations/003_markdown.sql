@@ -1,0 +1,1 @@
+ALTER TABLE notes ADD COLUMN format VARCHAR(20) DEFAULT 'text';

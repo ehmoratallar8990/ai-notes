@@ -1,1 +1,72 @@
-<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="popup.css"></head><body><main><h1>AI Notes</h1><label>Backend URL<input id="backendUrl" placeholder="http://localhost:3001"></label><label><input type="checkbox" id="autoRecord"> Auto-record meetings</label><p id="status">Idle</p><button id="start">Start recording</button><button id="stop">Stop recording</button><p class="privacy">Recording is opt-in. Always get consent before recording meetings.</p></main><script src="popup.js" type="module"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AI Notes</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<div class="popup">
+
+  <!-- Header -->
+  <header class="popup-header">
+    <span class="popup-logo">🎙 AI Notes</span>
+    <div class="conn-status" id="connStatus">
+      <span class="conn-dot" id="connDot"></span>
+      <span id="connLabel">Connecting…</span>
+    </div>
+  </header>
+
+  <!-- Meeting detection banner -->
+  <div class="meeting-banner" id="meetingBanner" hidden>
+    <span class="meeting-icon" id="meetingIcon">📹</span>
+    <div class="meeting-info">
+      <p class="meeting-label" id="meetingLabel">Meeting detected</p>
+      <p class="meeting-url" id="meetingUrl"></p>
+    </div>
+    <label class="auto-toggle" title="Auto-record this meeting">
+      <input type="checkbox" id="autoRecord">
+      <span class="toggle-track"><span class="toggle-thumb"></span></span>
+    </label>
+  </div>
+
+  <!-- Record control -->
+  <div class="record-area" id="recordArea">
+    <button class="rec-btn" id="recBtn">
+      <span class="rec-icon" id="recIcon">🎙</span>
+      <span class="rec-label" id="recLabel">Start recording</span>
+    </button>
+    <div class="rec-timer" id="recTimer" hidden>
+      <span class="timer-dot"></span>
+      <span id="timerDisplay">0:00</span>
+    </div>
+  </div>
+
+  <!-- Quick clip -->
+  <div class="clip-area">
+    <button class="clip-btn" id="clipBtn">📎 Clip this page</button>
+    <p class="clip-feedback" id="clipFeedback"></p>
+  </div>
+
+  <!-- Recent notes -->
+  <div class="recent-section" id="recentSection" hidden>
+    <p class="section-label">Recent notes</p>
+    <ul class="recent-list" id="recentList"></ul>
+  </div>
+
+  <!-- Footer settings -->
+  <details class="settings-details">
+    <summary class="settings-toggle">Settings</summary>
+    <div class="settings-body">
+      <label class="settings-label">Backend URL</label>
+      <input class="settings-input" id="backendUrl" placeholder="http://localhost:3001">
+      <p class="settings-hint">Default: http://localhost:3001</p>
+    </div>
+  </details>
+
+  <p class="privacy-note">Recording is opt-in. Always get consent before recording meetings.</p>
+</div>
+<script src="popup.js" type="module"></script>
+</body>
+</html>

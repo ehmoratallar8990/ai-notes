@@ -7,13 +7,17 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       PORT: ${API_CONTAINER_PORT:-3001}
       ORIGIN: ${ORIGIN:-http://localhost:8080}
-      DB_CLIENT: ${DB_CLIENT:-memory}
+      DB_CLIENT: ${DB_CLIENT:-file}
+      DB_FILE_PATH: ${DB_FILE_PATH:-/app/data/ai-notes.json}
       AI_PROVIDER: ${AI_PROVIDER:-mock}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3}
       SEARCH_PROVIDER: ${SEARCH_PROVIDER:-duckduckgo}
       TRANSCRIPTION_PROVIDER: ${TRANSCRIPTION_PROVIDER:-mock}
       SESSION_SECRET: ${SESSION_SECRET:-dev-secret-change-me}
     volumes:
       - ./uploads:/app/uploads
+      - ./data:/app/data
     ports:
       - "${API_PORT:-3001}:${API_CONTAINER_PORT:-3001}"
   web:

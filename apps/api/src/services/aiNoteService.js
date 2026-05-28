@@ -9,9 +9,68 @@ export function createMockAiProvider() {
   };
 }
 
-export function createAiProvider(name = process.env.AI_PROVIDER || 'mock') {
+export function createOllamaProvider({ baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434', model = process.env.OLLAMA_MODEL || 'llama3' } = {}) {
+  async function chat(prompt) {
+    const response = await fetch(`${baseUrl}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], stream: false })
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`Ollama ${model} request failed: ${response.status} ${text}`);
+    }
+    const data = await response.json();
+    return data.message?.content || '';
+  }
+
+  function extractJson(text) {
+    // Try to parse the entire text as JSON first
+    try { return JSON.parse(text); } catch {}
+    // Try to find JSON inside markdown code blocks
+    const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (codeBlockMatch) {
+      try { return JSON.parse(codeBlockMatch[1]); } catch {}
+    }
+    // Try to find the first JSON object/array in the text
+    const jsonMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+    if (jsonMatch) {
+      try { return JSON.parse(jsonMatch[1]); } catch {}
+    }
+    return null;
+  }
+
+  return {
+    async summary(text) {
+      const result = await chat(`Summarize the following note concisely in 1-3 sentences. Provide only the summary text, no extra commentary.\n\n${text}`);
+      return result.trim();
+    },
+    async keyPoints(text) {
+      const result = await chat(`Extract 3-7 key points from this note. Return ONLY a JSON array of strings, no other text. Example: ["Point one", "Point two"]\n\n${text}`);
+      const parsed = extractJson(result);
+      if (Array.isArray(parsed)) return parsed;
+      // Fallback: split by newlines and clean up
+      return result.split(/\n/).map(s => s.replace(/^\s*[-*•]\s*/, '').trim()).filter(Boolean).slice(0, 7);
+    },
+    async actionItems(text) {
+      const result = await chat(`Extract action items from this note. Return ONLY a JSON array of objects with "text" and optional "dueDate" fields. Example: [{"text":"Follow up with Maria","dueDate":null}]\n\n${text}`);
+      const parsed = extractJson(result);
+      if (Array.isArray(parsed)) return parsed.map(item => ({ text: item.text || String(item), dueDate: item.dueDate || null, completed: item.completed || false }));
+      return [{ text: firstSentence(text), dueDate: null, completed: false }];
+    },
+    async mindMap(text) {
+      const result = await chat(`Generate a mind map structure from this note. Return ONLY a JSON object with "root" and "children" fields. Each child has "label" and optional "children". Example: {"root":"Topic","children":[{"label":"Subtopic","children":[]}]}\n\n${text}`);
+      const parsed = extractJson(result);
+      if (parsed && parsed.root) return parsed;
+      return { root: 'Note', children: [{ label: firstSentence(text), children: [{ label: 'Summary' }, { label: 'Action items' }] }] };
+    }
+  };
+}
+
+export function createAiProvider(name = process.env.AI_PROVIDER || 'mock', options = {}) {
+  if (name === 'ollama') return createOllamaProvider(options);
   if (name !== 'mock') {
-    console.warn(`AI_PROVIDER=${name} not implemented yet; falling back to mock. Add Ollama/local OpenAI-compatible provider here.`);
+    console.warn(`AI_PROVIDER=${name} not implemented yet; falling back to mock. Available providers: mock, ollama.`);
   }
   return createMockAiProvider();
 }
