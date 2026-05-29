@@ -1,7 +1,10 @@
 import { spawn } from 'node:child_process';
 import { readFile, unlink, mkdtemp } from 'node:fs/promises';
-import { join, basename, extname } from 'node:path';
+import { join, basename, extname, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function segmentsToPlainText(segments) {
   return segments.map(s => `${s.speaker}: ${s.text}`).join('\n');
@@ -17,9 +20,9 @@ function normalizeSpeakerLabel(raw) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-function runProcess(cmd, args) {
+function runProcess(cmd, args, spawnOpts = {}) {
   return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, { stdio: 'pipe' });
+    const proc = spawn(cmd, args, { stdio: 'pipe', ...spawnOpts });
     let stderr = '';
     proc.stderr.on('data', d => { stderr += d.toString(); });
     proc.on('close', code => {
@@ -28,6 +31,79 @@ function runProcess(cmd, args) {
     });
     proc.on('error', reject);
   });
+}
+
+function runProcessCapture(cmd, args, spawnOpts = {}) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(cmd, args, { stdio: 'pipe', ...spawnOpts });
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.on('data', d => { stdout += d.toString(); });
+    proc.stderr.on('data', d => { stderr += d.toString(); });
+    proc.on('close', code => {
+      if (code !== 0) reject(new Error(`${cmd} exited with code ${code}: ${stderr.slice(-500)}`));
+      else resolve(stdout);
+    });
+    proc.on('error', reject);
+  });
+}
+
+// ── faster-whisper subprocess provider ────────────────────────────────────────
+// Requirements: pip install faster-whisper  (ffmpeg must be in PATH)
+// Config via env: WHISPER_MODEL, WHISPER_DEVICE, WHISPER_COMPUTE_TYPE,
+//                 WHISPER_LANGUAGE, HF_TOKEN (for speaker diarization)
+export function createFasterWhisperProvider({
+  scriptPath = process.env.WHISPER_SCRIPT_PATH || join(__dirname, 'transcribe.py'),
+  model = process.env.WHISPER_MODEL || 'base',
+  device = process.env.WHISPER_DEVICE || 'cpu',
+  computeType = process.env.WHISPER_COMPUTE_TYPE || 'int8',
+  language = process.env.WHISPER_LANGUAGE || undefined,
+  hfToken = process.env.HF_TOKEN || '',
+} = {}) {
+  return {
+    async transcribe({ filePath }) {
+      const env = {
+        ...process.env,
+        KMP_DUPLICATE_LIB_OK: 'TRUE',
+        WHISPER_MODEL: model,
+        WHISPER_DEVICE: device,
+        WHISPER_COMPUTE_TYPE: computeType,
+        ...(language ? { WHISPER_LANGUAGE: language } : {}),
+        ...(hfToken ? { HF_TOKEN: hfToken } : {}),
+      };
+      const stdout = await runProcessCapture('python3', [scriptPath, filePath], { env });
+      const result = JSON.parse(stdout.trim());
+      if (result.status === 'failed') throw new Error(result.error || 'faster-whisper failed');
+      return result;
+    }
+  };
+}
+
+// ── whisper-http provider ─────────────────────────────────────────────────────
+// Calls the standalone Python HTTP service (apps/transcribe/server.py).
+// Docker: docker compose up transcribe
+// Local:  python3 apps/transcribe/server.py
+// Set WHISPER_HTTP_URL=http://localhost:8765 (or http://transcribe:8765 in Docker)
+export function createWhisperHttpProvider({
+  baseUrl = process.env.WHISPER_HTTP_URL || 'http://localhost:8765',
+} = {}) {
+  return {
+    async transcribe({ filePath, mimeType = 'audio/webm' }) {
+      const fileBuffer = await readFile(filePath);
+      const ext = extname(filePath) || '.webm';
+      const formData = new FormData();
+      formData.append('audio', new Blob([fileBuffer], { type: mimeType }), basename(filePath));
+      formData.append('ext', ext);
+      const res = await fetch(`${baseUrl}/transcribe`, { method: 'POST', body: formData });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Whisper HTTP service error ${res.status}: ${text}`);
+      }
+      const result = await res.json();
+      if (result.error) throw new Error(result.error);
+      return result;
+    }
+  };
 }
 
 // Mock provider — realistic diarized output for testing/development
@@ -309,14 +385,16 @@ export function createGroqProvider({
 
 export function createTranscriptionProvider(name = process.env.TRANSCRIPTION_PROVIDER || 'mock', options = {}) {
   switch (name) {
-    case 'whisperx':   return createWhisperXProvider(options);
-    case 'assemblyai': return createAssemblyAIProvider(options);
-    case 'deepgram':   return createDeepgramProvider(options);
-    case 'openai':     return createOpenAIProvider(options);
-    case 'groq':       return createGroqProvider(options);
-    case 'mock':       return createMockTranscriptionProvider();
+    case 'faster-whisper': return createFasterWhisperProvider(options);
+    case 'whisper-http':   return createWhisperHttpProvider(options);
+    case 'whisperx':       return createWhisperXProvider(options);
+    case 'assemblyai':     return createAssemblyAIProvider(options);
+    case 'deepgram':       return createDeepgramProvider(options);
+    case 'openai':         return createOpenAIProvider(options);
+    case 'groq':           return createGroqProvider(options);
+    case 'mock':           return createMockTranscriptionProvider();
     default:
-      console.warn(`TRANSCRIPTION_PROVIDER="${name}" not recognized; using mock. Available: mock, whisperx, assemblyai, deepgram, openai, groq.`);
+      console.warn(`TRANSCRIPTION_PROVIDER="${name}" not recognized; using mock. Available: faster-whisper, whisper-http, whisperx, assemblyai, deepgram, openai, groq, mock.`);
       return createMockTranscriptionProvider();
   }
 }

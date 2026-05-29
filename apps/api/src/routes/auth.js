@@ -192,6 +192,28 @@ export function authRouter(store) {
     res.json(authResponse(store.getUserRecordById(passkey.userId)));
   });
 
+  router.get('/passkeys', (req, res) => {
+    if (!req.session?.userId) return res.status(401).json({ success: false, error: 'Not authenticated' });
+    const passkeys = store.listPasskeysForUser(req.session.userId).map(p => ({
+      credentialId: p.credentialId,
+      createdAt: p.createdAt,
+      lastUsedAt: p.lastUsedAt,
+      deviceType: p.deviceType || 'unknown',
+    }));
+    res.json({ success: true, data: passkeys });
+  });
+
+  router.delete('/passkeys/:credentialId', (req, res) => {
+    if (!req.session?.userId) return res.status(401).json({ success: false, error: 'Not authenticated' });
+    const remaining = store.listPasskeysForUser(req.session.userId);
+    if (remaining.length <= 1) {
+      return res.status(400).json({ success: false, error: 'Cannot delete your last passkey.' });
+    }
+    const deleted = store.deletePasskey(req.session.userId, req.params.credentialId);
+    if (!deleted) return res.status(404).json({ success: false, error: 'Passkey not found.' });
+    res.json({ success: true, data: { passkeyCount: remaining.length - 1 } });
+  });
+
   router.post('/logout', (req, res) => { req.session = null; res.json({ success: true }); });
   return router;
 }

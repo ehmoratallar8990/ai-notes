@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { t } from '@ai-notes/i18n';
+import TranscribeWorker from './transcribeWorker.js?worker';
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '';
@@ -174,50 +175,112 @@ function AuthSection({ tr, notice, onPasskeyLogin, onLogin, onRegister }) {
 }
 
 // ── Profile page ──────────────────────────────────────────────────────────────
-function ProfilePage({ user, tr, notice, onSaveProfile, onAddPasskey }) {
+function ProfilePage({ user, notes, tr, notice, onSaveProfile, onAddPasskey, onDeletePasskey, passkeys }) {
+  const [changingPw, setChangingPw] = useState(false);
+  const initials = (user.displayName || user.username || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
   return (
-    <section className="profile-shell card">
-      <div className="profile-header">
-        <div>
-          <p className="auth-eyebrow">{tr('auth.profile')}</p>
-          <h2 className="panel-title profile-title">{tr('auth.profileTitle')}</h2>
-          <p className="profile-copy">{tr('auth.profileHint')}</p>
+    <div className="profile-shell">
+      {/* Avatar + header */}
+      <div className="profile-hero card">
+        <div className="profile-avatar" aria-hidden="true">{initials}</div>
+        <div className="profile-hero-info">
+          <h2 className="profile-name">{user.displayName}</h2>
+          <p className="profile-username">@{user.username}</p>
         </div>
-        <div className="profile-passkey-stat">
-          <span className="profile-stat-label">{tr('auth.passkeys')}</span>
-          <strong>{user.passkeyCount || 0}</strong>
-        </div>
-      </div>
-      <StatusMessage notice={notice} />
-      <div className="profile-grid">
-        <form className="auth-form profile-form" onSubmit={onSaveProfile}>
-          <label className="auth-label">{tr('auth.username')}</label>
-          <input className="input-field readonly-field" value={user.username || ''} readOnly />
-          <label className="auth-label">{tr('auth.displayName')}</label>
-          <input className="input-field" name="displayName" defaultValue={user.displayName || ''} required />
-          <label className="auth-label">{tr('auth.language')}</label>
-          <select className="input-field" name="preferredLanguage" defaultValue={user.preferredLanguage || 'en'}>
-            <option value="en">English</option>
-            <option value="es">Español</option>
-          </select>
-          <label className="auth-label">{tr('auth.currentPassword')}</label>
-          <input className="input-field" type="password" name="currentPassword" placeholder={tr('auth.currentPasswordPlaceholder')} />
-          <label className="auth-label">{tr('auth.newPassword')}</label>
-          <input className="input-field" type="password" name="newPassword" placeholder={tr('auth.newPasswordPlaceholder')} minLength={8} />
-          <label className="auth-label">{tr('auth.confirmNewPassword')}</label>
-          <input className="input-field" type="password" name="confirmNewPassword" placeholder={tr('auth.confirmPasswordPlaceholder')} minLength={8} />
-          <div className="profile-actions">
-            <button className="btn-primary" type="submit">{tr('auth.saveProfile')}</button>
+        <div className="profile-stats">
+          <div className="profile-stat">
+            <span className="profile-stat-val">{notes.length}</span>
+            <span className="profile-stat-label">Notes</span>
           </div>
-        </form>
-        <aside className="profile-side card profile-side-card">
-          <h3 className="panel-subtitle">{tr('auth.passkeys')}</h3>
-          <p className="profile-copy">{tr('auth.passkeyHelp')}</p>
-          <button className="btn-secondary auth-passkey-btn" type="button" onClick={onAddPasskey}>{tr('auth.addPasskey')}</button>
-          <p className="auth-helper">{tr('auth.passkeySecureContext')}</p>
-        </aside>
+          <div className="profile-stat">
+            <span className="profile-stat-val">{user.passkeyCount || 0}</span>
+            <span className="profile-stat-label">Passkeys</span>
+          </div>
+          <div className="profile-stat">
+            <span className="profile-stat-val">{user.preferredLanguage?.toUpperCase() || 'EN'}</span>
+            <span className="profile-stat-label">Language</span>
+          </div>
+        </div>
       </div>
-    </section>
+
+      <StatusMessage notice={notice} />
+
+      <div className="profile-grid">
+        {/* Identity form */}
+        <div className="profile-col">
+          <section className="profile-section card">
+            <h3 className="profile-section-title">Identity</h3>
+            <form className="auth-form" onSubmit={onSaveProfile}>
+              <label className="auth-label">{tr('auth.username')}</label>
+              <input className="input-field readonly-field" value={user.username || ''} readOnly />
+
+              <label className="auth-label">{tr('auth.displayName')}</label>
+              <input className="input-field" name="displayName" defaultValue={user.displayName || ''} required />
+
+              <label className="auth-label">{tr('auth.language')}</label>
+              <select className="input-field" name="preferredLanguage" defaultValue={user.preferredLanguage || 'en'}>
+                <option value="en">English</option>
+                <option value="es">Español</option>
+              </select>
+
+              {/* Password change — collapsed by default */}
+              <div className="pw-change-wrap">
+                <button type="button" className="pw-toggle-btn" onClick={() => setChangingPw(v => !v)}>
+                  {changingPw ? '▲ Cancel password change' : '🔑 Change password'}
+                </button>
+                {changingPw && (
+                  <div className="pw-fields">
+                    <label className="auth-label">{tr('auth.currentPassword')}</label>
+                    <input className="input-field" type="password" name="currentPassword" placeholder={tr('auth.currentPasswordPlaceholder')} />
+                    <label className="auth-label">{tr('auth.newPassword')}</label>
+                    <input className="input-field" type="password" name="newPassword" placeholder={tr('auth.newPasswordPlaceholder')} minLength={8} />
+                    <label className="auth-label">{tr('auth.confirmNewPassword')}</label>
+                    <input className="input-field" type="password" name="confirmNewPassword" placeholder={tr('auth.confirmPasswordPlaceholder')} minLength={8} />
+                  </div>
+                )}
+              </div>
+
+              <button className="btn-primary" type="submit">{tr('auth.saveProfile')}</button>
+            </form>
+          </section>
+        </div>
+
+        {/* Passkeys section */}
+        <div className="profile-col">
+          <section className="profile-section card">
+            <div className="profile-section-header">
+              <h3 className="profile-section-title">Passkeys</h3>
+              <button className="btn-secondary passkey-add-btn" type="button" onClick={onAddPasskey}>+ Add</button>
+            </div>
+            <p className="profile-copy">{tr('auth.passkeyHelp')}</p>
+
+            {passkeys.length === 0 ? (
+              <p className="profile-copy" style={{ marginTop: 12 }}>No passkeys yet. Add one to sign in without a password.</p>
+            ) : (
+              <ul className="passkey-list">
+                {passkeys.map(pk => (
+                  <li key={pk.credentialId} className="passkey-item">
+                    <span className="passkey-icon">🔑</span>
+                    <div className="passkey-info">
+                      <span className="passkey-type">{pk.deviceType === 'multiDevice' ? 'Synced passkey' : 'Device passkey'}</span>
+                      <span className="passkey-dates">
+                        Added {formatDate(pk.createdAt)}
+                        {pk.lastUsedAt ? ` · Last used ${formatDate(pk.lastUsedAt)}` : ''}
+                      </span>
+                    </div>
+                    {passkeys.length > 1 && (
+                      <button className="passkey-delete-btn" onClick={() => onDeletePasskey(pk.credentialId)} title="Remove passkey">✕</button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="auth-helper" style={{ marginTop: 12 }}>{tr('auth.passkeySecureContext')}</p>
+          </section>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -325,35 +388,113 @@ function BrowsePanel({ notes, folders, tags, selected, filters, onFilter, onSele
 // ── Transcript view ───────────────────────────────────────────────────────────
 function TranscriptSection({ note }) {
   const [open, setOpen] = useState(true);
+  const [search, setSearch] = useState('');
+  const [copied, setCopied] = useState(false);
+
   const hasSegments = Array.isArray(note.transcriptSegments) && note.transcriptSegments.length > 0;
   const hasPlain = Boolean(note.transcript);
   if (!hasSegments && !hasPlain) return null;
 
-  const speakerLabel = hasSegments && note.speakerCount > 1
-    ? ` · ${note.speakerCount} speakers`
-    : hasSegments ? ' · 1 speaker' : '';
+  // Group consecutive same-speaker segments into conversation turns
+  const turns = hasSegments ? note.transcriptSegments.reduce((acc, seg) => {
+    const last = acc[acc.length - 1];
+    if (last && last.speaker === seg.speaker) {
+      last.lines.push(seg);
+      last.end = seg.end;
+    } else {
+      acc.push({ speaker: seg.speaker, start: seg.start, end: seg.end, lines: [seg] });
+    }
+    return acc;
+  }, []) : [];
+
+  const uniqueSpeakers = [...new Set(turns.map(t => t.speaker))];
+  const speakerCount = note.speakerCount || uniqueSpeakers.length || (hasSegments ? 1 : 0);
+
+  const q = search.toLowerCase();
+  const filtered = search
+    ? turns.filter(t => t.lines.some(s => s.text.toLowerCase().includes(q)))
+    : turns;
+
+  async function copyTranscript() {
+    const text = hasSegments
+      ? note.transcriptSegments.map(s => `[${formatSegmentTime(s.start)}] ${s.speaker}: ${s.text}`).join('\n')
+      : note.transcript;
+    await navigator.clipboard.writeText(text).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   return (
     <div className="transcript-section">
-      <button className="transcript-toggle" onClick={() => setOpen(o => !o)}>
-        <span>Transcript{speakerLabel}</span>
-        <span className="toggle-arrow">{open ? '▲' : '▼'}</span>
-      </button>
+      <div className="transcript-header">
+        <button className="transcript-toggle" onClick={() => setOpen(o => !o)}>
+          <span className="transcript-title">
+            <span className="transcript-icon">🎙</span>
+            Transcript
+            {speakerCount > 0 && (
+              <span className="transcript-speaker-count">
+                {speakerCount} {speakerCount === 1 ? 'speaker' : 'speakers'}
+              </span>
+            )}
+          </span>
+          <span className="toggle-arrow">{open ? '▲' : '▼'}</span>
+        </button>
+        {open && (hasSegments || hasPlain) && (
+          <button className={`transcript-copy ${copied ? 'is-copied' : ''}`} onClick={copyTranscript}>
+            {copied ? '✓ Copied' : 'Copy'}
+          </button>
+        )}
+      </div>
+
       {open && (
-        <div className="transcript-body">
-          {hasSegments ? (
-            note.transcriptSegments.map((seg, i) => (
-              <div key={i} className={`transcript-segment ${getSpeakerColor(seg.speaker)}`}>
-                <div className="segment-header">
-                  <span className="segment-speaker">{seg.speaker}</span>
-                  <span className="segment-time">{formatSegmentTime(seg.start)}</span>
-                </div>
-                <p className="segment-text">{seg.text}</p>
-              </div>
-            ))
-          ) : (
-            <pre className="plain-transcript">{note.transcript}</pre>
+        <div className="transcript-open">
+          {hasSegments && uniqueSpeakers.length > 1 && (
+            <div className="speaker-legend">
+              {uniqueSpeakers.map(sp => (
+                <span key={sp} className={`speaker-chip ${getSpeakerColor(sp)}`}>{sp}</span>
+              ))}
+            </div>
           )}
+
+          {hasSegments && turns.length > 4 && (
+            <div className="transcript-search-row">
+              <input
+                className="input-field transcript-search"
+                placeholder="Search transcript…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+              {search && (
+                <span className="transcript-search-count">
+                  {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="transcript-body">
+            {hasSegments ? (
+              filtered.length > 0 ? filtered.map((turn, i) => (
+                <div key={i} className={`transcript-turn ${getSpeakerColor(turn.speaker)}`}>
+                  <div className="turn-meta">
+                    <span className="turn-speaker">{turn.speaker}</span>
+                    <span className="turn-time">{formatSegmentTime(turn.start)}</span>
+                  </div>
+                  <div className="turn-lines">
+                    {turn.lines.map((seg, j) => (
+                      <p key={j} className={`turn-line${q && seg.text.toLowerCase().includes(q) ? ' is-highlight' : ''}`}>
+                        {seg.text}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )) : (
+                <p className="transcript-no-results">No results for &ldquo;{search}&rdquo;</p>
+              )
+            ) : (
+              <pre className="plain-transcript">{note.transcript}</pre>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -630,41 +771,99 @@ function AISearchPanel({ selected, aiLoading, onGenerate, onToggleActionItem, se
 }
 
 // ── Record button / FAB ───────────────────────────────────────────────────────
-function RecordControl({ recording, recordingPhase, recordingSeconds, waveformBars, onStart, onStop, isFab }) {
+function ModelDownloadModal({ onConfirm, onCancel }) {
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onCancel()}>
+      <div className="modal card" role="dialog" aria-modal="true">
+        <div className="modal-icon">📱</div>
+        <h3 className="modal-title">On-Device Transcription</h3>
+        <p className="modal-desc">
+          Whisper AI will run <strong>entirely in your browser</strong> — no audio is ever sent to a server.
+          Ideal for iPhone and private recordings.
+        </p>
+        <ul className="modal-list">
+          <li><span className="modal-list-icon">⬇️</span> One-time download of ~40 MB (cached locally)</li>
+          <li><span className="modal-list-icon">🔒</span> Audio never leaves your device</li>
+          <li><span className="modal-list-icon">✈️</span> Works offline after first download</li>
+          <li><span className="modal-list-icon">📱</span> Supports iPhone Safari 16.4+</li>
+        </ul>
+        <p className="modal-note">Model: <code>whisper-tiny</code> · English &amp; multilingual</p>
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onCancel}>Cancel</button>
+          <button className="btn-primary" onClick={onConfirm}>Download &amp; Enable</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RecordControl({ recording, recordingPhase, recordingSeconds, waveformBars, onStart, onStop, isFab, deviceTranscribe, deviceModelReady, deviceModelLoading, modelProgress, onToggleDeviceTranscribe }) {
   const isUploading = recordingPhase === 'uploading';
   const cls = isFab ? 'record-fab' : 'btn-record';
+  const pct = modelProgress?.pct ?? 0;
+
+  const toggle = onToggleDeviceTranscribe && !isFab ? (
+    <div className="device-toggle-wrap">
+      <button
+        className={`device-transcribe-toggle ${deviceTranscribe ? 'is-on' : ''}`}
+        onClick={onToggleDeviceTranscribe}
+        disabled={recording || isUploading}
+        title={deviceTranscribe ? 'On-device transcription ON — click to use server' : 'Enable on-device transcription (iPhone-compatible)'}
+      >
+        {deviceModelLoading
+          ? `📱 ${pct > 0 ? pct + '%' : 'Starting…'}`
+          : deviceTranscribe
+            ? (deviceModelReady ? '📱 On-device' : '📱 Queued')
+            : '📱 Off'}
+      </button>
+      {deviceModelLoading && (
+        <div className="model-progress-bar">
+          <div className="model-progress-fill" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+    </div>
+  ) : null;
 
   if (isUploading) {
     return (
-      <button className={`${cls} is-uploading`} disabled>
-        {isFab ? '⏳' : 'Processing…'}
-      </button>
+      <>
+        {toggle}
+        <button className={`${cls} is-uploading`} disabled>
+          {isFab ? '⏳' : 'Processing…'}
+        </button>
+      </>
     );
   }
 
   if (recording) {
     return (
-      <button className={`${cls} is-recording`} onClick={onStop}>
-        {isFab ? (
-          <>
-            <span className="fab-stop-icon">■</span>
-            <span className="fab-timer">{formatTimer(recordingSeconds)}</span>
-          </>
-        ) : (
-          <>
-            <WaveformBars bars={waveformBars} />
-            <span>{formatTimer(recordingSeconds)}</span>
-            <span>Stop</span>
-          </>
-        )}
-      </button>
+      <>
+        {toggle}
+        <button className={`${cls} is-recording`} onClick={onStop}>
+          {isFab ? (
+            <>
+              <span className="fab-stop-icon">■</span>
+              <span className="fab-timer">{formatTimer(recordingSeconds)}</span>
+            </>
+          ) : (
+            <>
+              <WaveformBars bars={waveformBars} />
+              <span>{formatTimer(recordingSeconds)}</span>
+              <span>Stop</span>
+            </>
+          )}
+        </button>
+      </>
     );
   }
 
   return (
-    <button className={cls} onClick={onStart}>
-      {isFab ? '🎙' : '🎙 Record'}
-    </button>
+    <>
+      {toggle}
+      <button className={cls} onClick={onStart}>
+        {isFab ? '🎙' : '🎙 Record'}
+      </button>
+    </>
   );
 }
 
@@ -672,9 +871,10 @@ function RecordControl({ recording, recordingPhase, recordingSeconds, waveformBa
 function Dashboard({
   user, view, setView, folders, notes, tags, selected, recording, recordingPhase, recordingSeconds, waveformBars,
   filters, aiLoading, searchResults, searchLoading,
+  deviceTranscribe, deviceModelReady, deviceModelLoading, modelProgress, onToggleDeviceTranscribe,
   tr, notice, workspaceNotice,
   onFilter, onSelect, onQuickCreate, onPin, onUpdate, onDelete, onGenerate, onToggleActionItem,
-  onSearch, startRecording, stopRecording, onSaveProfile, onAddPasskey, onLogout, onNotice,
+  onSearch, startRecording, stopRecording, onSaveProfile, onAddPasskey, onDeletePasskey, passkeys, onLogout, onNotice,
 }) {
   const [mobileView, setMobileView] = useState('list');
 
@@ -699,6 +899,11 @@ function Dashboard({
               waveformBars={waveformBars}
               onStart={startRecording}
               onStop={stopRecording}
+              deviceTranscribe={deviceTranscribe}
+              deviceModelReady={deviceModelReady}
+              deviceModelLoading={deviceModelLoading}
+              modelProgress={modelProgress}
+              onToggleDeviceTranscribe={onToggleDeviceTranscribe}
               isFab={false}
             />
           )}
@@ -710,7 +915,7 @@ function Dashboard({
       <StatusMessage notice={workspaceNotice} />
 
       {view === 'profile' ? (
-        <ProfilePage user={user} tr={tr} notice={notice} onSaveProfile={onSaveProfile} onAddPasskey={onAddPasskey} />
+        <ProfilePage user={user} notes={notes} tr={tr} notice={notice} onSaveProfile={onSaveProfile} onAddPasskey={onAddPasskey} onDeletePasskey={onDeletePasskey} passkeys={passkeys} />
       ) : (
         <>
           <div className="layout-grid">
@@ -754,6 +959,11 @@ function Dashboard({
             waveformBars={waveformBars}
             onStart={startRecording}
             onStop={stopRecording}
+            deviceTranscribe={deviceTranscribe}
+            deviceModelReady={deviceModelReady}
+            deviceModelLoading={deviceModelLoading}
+            modelProgress={modelProgress}
+            onToggleDeviceTranscribe={onToggleDeviceTranscribe}
             isFab={true}
           />
         </>
@@ -775,6 +985,12 @@ function App() {
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
 
+  const [passkeys, setPasskeys] = useState([]);
+  const [deviceTranscribe, setDeviceTranscribe] = useState(true);
+  const [deviceModelReady, setDeviceModelReady] = useState(false);
+  const [deviceModelLoading, setDeviceModelLoading] = useState(false);
+  const [modelProgress, setModelProgress] = useState(null); // { file, pct } | null
+  const [showModelModal, setShowModelModal] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingPhase, setRecordingPhase] = useState('idle');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -795,6 +1011,7 @@ function App() {
   const analyserRef = useRef(null);
   const audioCtxRef = useRef(null);
   const animFrameRef = useRef(null);
+  const whisperWorkerRef = useRef(null);
 
   const tr = key => t(lang, key);
 
@@ -816,9 +1033,17 @@ function App() {
     return () => { window.removeEventListener('beforeinstallprompt', onPrompt); window.removeEventListener('appinstalled', onInstalled); };
   }, []);
 
+  async function loadPasskeys() {
+    const res = await api('/api/auth/passkeys');
+    if (res.success) setPasskeys(res.data);
+  }
+
   useEffect(() => {
-    if (!user?.user?.id) { setNotes([]); setFolders([]); setTags([]); setSelected(null); return; }
+    if (!user?.user?.id) { setNotes([]); setFolders([]); setTags([]); setSelected(null); setPasskeys([]); return; }
     refresh();
+    loadPasskeys();
+    // Auto-start model download since device transcription is on by default
+    startModelDownload();
   }, [user?.user?.id]);
 
   // Re-fetch notes when filters change (debounced for search)
@@ -903,10 +1128,19 @@ function App() {
       const verRes = await api('/api/auth/passkey/register/verify', { method: 'POST', body: JSON.stringify(serializeCredential(credential)) });
       if (!verRes.success) return setProfileNotice({ type: 'error', message: verRes.error || tr('auth.passkeyRegisterFailed') });
       setAuthenticatedUser(verRes.data);
+      await loadPasskeys();
       setProfileNotice({ type: 'success', message: tr('auth.passkeyRegistered') });
     } catch (err) {
       setProfileNotice({ type: 'error', message: err?.message || tr('auth.passkeyRegisterFailed') });
     }
+  }
+
+  async function deletePasskey(credentialId) {
+    setProfileNotice(null);
+    const res = await api(`/api/auth/passkeys/${encodeURIComponent(credentialId)}`, { method: 'DELETE', body: '{}' });
+    if (!res.success) return setProfileNotice({ type: 'error', message: res.error || 'Could not delete passkey.' });
+    await loadPasskeys();
+    setProfileNotice({ type: 'success', message: 'Passkey removed.' });
   }
 
   async function saveProfile(e) {
@@ -972,6 +1206,87 @@ function App() {
     setSearchLoading(false);
   }
 
+  // ── On-device transcription (transformers.js / Whisper WASM) ──
+  function getOrCreateWorker() {
+    if (!whisperWorkerRef.current) {
+      const w = new TranscribeWorker();
+      w.onmessage = ({ data }) => {
+        if (data.type === 'ready') {
+          setDeviceModelReady(true);
+          setDeviceModelLoading(false);
+          setModelProgress(null);
+        } else if (data.type === 'progress') {
+          if (data.status === 'download' && typeof data.progress === 'number') {
+            setModelProgress({ file: data.file || '', pct: Math.round(data.progress) });
+          } else if (data.status === 'done') {
+            setModelProgress(prev => prev ? { ...prev, pct: 100 } : prev);
+          }
+        } else if (data.type === 'error') {
+          setDeviceModelLoading(false);
+          setModelProgress(null);
+          setWorkspaceNotice({ type: 'error', message: `On-device model: ${data.message}` });
+        }
+        // 'result' events are handled by the one-shot listener in runDeviceTranscription
+      };
+      whisperWorkerRef.current = w;
+    }
+    return whisperWorkerRef.current;
+  }
+
+  function startModelDownload() {
+    if (deviceModelReady || deviceModelLoading) return;
+    setDeviceModelLoading(true);
+    setModelProgress({ file: '', pct: 0 });
+    const w = getOrCreateWorker();
+    w.postMessage({ type: 'load', model: 'Xenova/whisper-tiny' });
+  }
+
+  function toggleDeviceTranscribe() {
+    if (deviceTranscribe) {
+      setDeviceTranscribe(false);
+      return;
+    }
+    setDeviceTranscribe(true);
+    startModelDownload();
+  }
+
+  function confirmModelDownload() {
+    setShowModelModal(false);
+    setDeviceTranscribe(true);
+    startModelDownload();
+  }
+
+  async function decodeAudioToFloat32(blob) {
+    const arrayBuffer = await blob.arrayBuffer();
+    const ctx = new AudioContext({ sampleRate: 16000 });
+    const decoded = await ctx.decodeAudioData(arrayBuffer);
+    await ctx.close();
+    const mono = new Float32Array(decoded.length);
+    for (let c = 0; c < decoded.numberOfChannels; c++) {
+      const ch = decoded.getChannelData(c);
+      for (let i = 0; i < decoded.length; i++) mono[i] += ch[i];
+    }
+    if (decoded.numberOfChannels > 1) {
+      for (let i = 0; i < mono.length; i++) mono[i] /= decoded.numberOfChannels;
+    }
+    return mono;
+  }
+
+  function runDeviceTranscription(audio) {
+    return new Promise((resolve, reject) => {
+      const w = getOrCreateWorker();
+      const handler = ({ data }) => {
+        if (data.type === 'result' || data.type === 'error') {
+          w.removeEventListener('message', handler);
+          if (data.type === 'result') resolve(data);
+          else reject(new Error(data.message));
+        }
+      };
+      w.addEventListener('message', handler);
+      w.postMessage({ type: 'transcribe', audio, model: 'Xenova/whisper-tiny' }, [audio.buffer]);
+    });
+  }
+
   // ── Recording ──
   function startWaveform(stream) {
     try {
@@ -1024,6 +1339,7 @@ function App() {
       const mimeType = MediaRecorder.isTypeSupported?.('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : '';
       recorder.current = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       recorder.current.ondataavailable = e => { if (e.data?.size) chunks.current.push(e.data); };
+      const useDeviceTranscribe = deviceTranscribe;
       recorder.current.onstop = async () => {
         stopWaveform();
         stopTimer();
@@ -1031,16 +1347,43 @@ function App() {
         setRecordingPhase('uploading');
         try {
           const mime = mimeType || chunks.current[0]?.type || 'audio/webm';
-          const ext = mime.includes('mp4') ? 'm4a' : 'webm';
           const blob = new Blob(chunks.current, { type: mime });
-          const data = new FormData();
-          data.append('audio', blob, `voice-note.${ext}`);
-          const res = await fetch(`${API}/api/recordings`, { method: 'POST', credentials: 'include', body: data });
-          const json = await res.json();
-          if (!res.ok || !json.success) throw new Error(json.error || 'Upload failed.');
-          setSelected(json.data.note);
-          await refresh();
-          setWorkspaceNotice({ type: 'success', message: 'Recording saved and transcribed.' });
+
+          if (useDeviceTranscribe) {
+            setWorkspaceNotice({ type: 'info', message: 'Transcribing on device…' });
+            const audio = await decodeAudioToFloat32(blob);
+            const { text, chunks: tChunks } = await runDeviceTranscription(audio);
+            const segments = (tChunks || []).map((c, i) => ({
+              speaker: 'Speaker 1',
+              start: c.timestamp?.[0] ?? i * 5,
+              end: c.timestamp?.[1] ?? (i + 1) * 5,
+              text: c.text?.trim() || '',
+            }));
+            const res = await api('/api/notes', {
+              method: 'POST',
+              body: JSON.stringify({
+                title: `Voice note – ${new Date().toLocaleString()}`,
+                body: text,
+                transcriptSegments: segments,
+                speakerCount: 1,
+                source: 'recording',
+              }),
+            });
+            if (!res.success) throw new Error(res.error || 'Save failed.');
+            setSelected(res.data);
+            await refresh();
+            setWorkspaceNotice({ type: 'success', message: 'Recording transcribed on device and saved.' });
+          } else {
+            const ext = mime.includes('mp4') ? 'm4a' : 'webm';
+            const data = new FormData();
+            data.append('audio', blob, `voice-note.${ext}`);
+            const res = await fetch(`${API}/api/recordings`, { method: 'POST', credentials: 'include', body: data });
+            const json = await res.json();
+            if (!res.ok || !json.success) throw new Error(json.error || 'Upload failed.');
+            setSelected(json.data.note);
+            await refresh();
+            setWorkspaceNotice({ type: 'success', message: 'Recording saved and transcribed.' });
+          }
         } catch (err) {
           setWorkspaceNotice({ type: 'error', message: err?.message || 'Recording upload failed.' });
         } finally {
@@ -1081,6 +1424,12 @@ function App() {
 
   return (
     <main className="app">
+      {showModelModal && (
+        <ModelDownloadModal
+          onConfirm={confirmModelDownload}
+          onCancel={() => setShowModelModal(false)}
+        />
+      )}
       <header className="app-header">
         <h1 className="app-title">{tr('notes.title')}</h1>
         <div className="header-actions">
@@ -1126,10 +1475,17 @@ function App() {
             onGenerate={generate}
             onToggleActionItem={toggleActionItem}
             onSearch={searchWeb}
+            deviceTranscribe={deviceTranscribe}
+            deviceModelReady={deviceModelReady}
+            deviceModelLoading={deviceModelLoading}
+            modelProgress={modelProgress}
+            onToggleDeviceTranscribe={toggleDeviceTranscribe}
             startRecording={startRecording}
             stopRecording={stopRecording}
             onSaveProfile={saveProfile}
             onAddPasskey={addPasskey}
+            onDeletePasskey={deletePasskey}
+            passkeys={passkeys}
             onLogout={logout}
             onNotice={setWorkspaceNotice}
           />

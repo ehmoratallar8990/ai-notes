@@ -1,0 +1,4 @@
+faster-whisper>=1.0.0
+# Optional: uncomment for speaker diarization (requires HF_TOKEN env var)
+# pyannote.audio>=3.1.0
+# torch>=2.0.0

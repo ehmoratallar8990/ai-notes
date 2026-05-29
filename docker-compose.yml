@@ -1,8 +1,24 @@
 services:
+  transcribe:
+    build:
+      context: apps/transcribe
+      dockerfile: Dockerfile
+    environment:
+      WHISPER_MODEL: ${WHISPER_MODEL:-base}
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+      WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-}
+      WHISPER_PORT: 8765
+      HF_TOKEN: ${HF_TOKEN:-}
+    ports:
+      - "${WHISPER_PORT:-8765}:8765"
+
   api:
     build:
       context: .
       dockerfile: docker/api.Dockerfile
+    depends_on:
+      - transcribe
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       PORT: ${API_CONTAINER_PORT:-3001}
@@ -13,7 +29,8 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3}
       SEARCH_PROVIDER: ${SEARCH_PROVIDER:-duckduckgo}
-      TRANSCRIPTION_PROVIDER: ${TRANSCRIPTION_PROVIDER:-mock}
+      TRANSCRIPTION_PROVIDER: ${TRANSCRIPTION_PROVIDER:-whisper-http}
+      WHISPER_HTTP_URL: ${WHISPER_HTTP_URL:-http://transcribe:8765}
       SESSION_SECRET: ${SESSION_SECRET:-dev-secret-change-me}
     volumes:
       - ./uploads:/app/uploads

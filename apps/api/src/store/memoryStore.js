@@ -45,6 +45,12 @@ export function createMemoryStore() {
       Object.assign(passkey, attrs);
       return clone(passkey);
     },
+    deletePasskey(userId, credentialId) {
+      const idx = db.passkeys.findIndex(p => p.userId === userId && p.credentialId === credentialId);
+      if (idx === -1) return false;
+      db.passkeys.splice(idx, 1);
+      return true;
+    },
     createFolder(userId, { name }) {
       const folder = { id: randomUUID(), userId, name, createdAt: now(), updatedAt: now() };
       db.folders.push(folder); return clone(folder);

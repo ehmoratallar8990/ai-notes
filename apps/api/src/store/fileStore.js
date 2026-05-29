@@ -101,6 +101,13 @@ export function createFileStore({ filePath = path.resolve(process.cwd(), 'data/a
       persist();
       return clone(passkey);
     },
+    deletePasskey(userId, credentialId) {
+      const idx = db.passkeys.findIndex((p) => p.userId === userId && p.credentialId === credentialId);
+      if (idx === -1) return false;
+      db.passkeys.splice(idx, 1);
+      persist();
+      return true;
+    },
     createFolder(userId, { name }) {
       const folder = { id: randomUUID(), userId, name, createdAt: now(), updatedAt: now() };
       db.folders.push(folder);
@@ -135,6 +142,8 @@ export function createFileStore({ filePath = path.resolve(process.cwd(), 'data/a
         body: attrs.body || '',
         transcript: attrs.transcript || '',
         transcriptionStatus: attrs.transcriptionStatus || 'pending',
+        transcriptSegments: Array.isArray(attrs.transcriptSegments) ? [...attrs.transcriptSegments] : [],
+        speakerCount: attrs.speakerCount || 0,
         summary: '',
         keyPointsJson: [],
         actionItemsJson: [],
@@ -194,7 +203,7 @@ export function createFileStore({ filePath = path.resolve(process.cwd(), 'data/a
     updateNote(userId, id, attrs) {
       const note = db.notes.find((n) => n.userId === userId && n.id === id && !n.deletedAt);
       if (!note) return null;
-      for (const key of ['folderId', 'title', 'body', 'transcript', 'transcriptionStatus', 'summary', 'keyPointsJson', 'actionItemsJson', 'mindMapJson', 'pinned', 'tags', 'format']) {
+      for (const key of ['folderId', 'title', 'body', 'transcript', 'transcriptSegments', 'speakerCount', 'transcriptionStatus', 'summary', 'keyPointsJson', 'actionItemsJson', 'mindMapJson', 'pinned', 'tags', 'format']) {
         if (Object.hasOwn(attrs, key)) note[key] = attrs[key];
       }
       note.updatedAt = now();
