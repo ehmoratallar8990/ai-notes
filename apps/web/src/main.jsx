@@ -1549,6 +1549,8 @@ function App() {
   const [deviceAIReady, setDeviceAIReady] = useState(false);
   const [deviceAILoading, setDeviceAILoading] = useState(false);
   const [aiModelProgress, setAiModelProgress] = useState(null);
+  const [selectedAIModel, setSelectedAIModel] = useState('HuggingFaceTB/SmolLM2-135M-Instruct');
+  const selectedAIModelRef = useRef('HuggingFaceTB/SmolLM2-135M-Instruct');
 
   const recorder = useRef(null);
   const chunks = useRef([]);
@@ -1806,12 +1808,22 @@ function App() {
     return aiWorkerRef.current;
   }
 
-  function startAIModelDownload() {
-    if (deviceAIReady || deviceAILoading) return;
+  function startAIModelDownload(modelId) {
+    const id = modelId || selectedAIModelRef.current;
     setDeviceAILoading(true);
+    setDeviceAIReady(false);
     setAiModelProgress({ file: '', pct: 0 });
     const w = getOrCreateAIWorker();
-    w.postMessage({ type: 'load' });
+    w.postMessage({ type: 'load', model: id });
+  }
+
+  function changeAIModel(modelId) {
+    setSelectedAIModel(modelId);
+    selectedAIModelRef.current = modelId;
+    if (deviceAI) {
+      setDeviceAIReady(false);
+      startAIModelDownload(modelId);
+    }
   }
 
   function toggleDeviceAI() {
@@ -1819,7 +1831,7 @@ function App() {
       setDeviceAI(false);
     } else {
       setDeviceAI(true);
-      startAIModelDownload();
+      startAIModelDownload(selectedAIModelRef.current);
     }
   }
 
@@ -1827,6 +1839,7 @@ function App() {
     const text = textOverride || note.transcript || note.body || note.title || '';
     if (!text) { setWorkspaceNotice({ type: 'error', message: 'No text to process.' }); return null; }
     const w = getOrCreateAIWorker();
+    const model = selectedAIModelRef.current;
     return new Promise(resolve => {
       const handler = ({ data }) => {
         if (data.type === 'result' && data.task === type) {
@@ -1838,7 +1851,25 @@ function App() {
         }
       };
       w.addEventListener('message', handler);
-      w.postMessage({ type: 'generate', task: type, text });
+      w.postMessage({ type: 'generate', task: type, text, model });
+    });
+  }
+
+  async function chatOnDevice(noteContext, history, message) {
+    const w = getOrCreateAIWorker();
+    const model = selectedAIModelRef.current;
+    return new Promise(resolve => {
+      const handler = ({ data }) => {
+        if (data.type === 'chat-result') {
+          w.removeEventListener('message', handler);
+          resolve(data.reply);
+        } else if (data.type === 'error') {
+          w.removeEventListener('message', handler);
+          resolve(null);
+        }
+      };
+      w.addEventListener('message', handler);
+      w.postMessage({ type: 'chat', model, noteContext, history, message });
     });
   }
 
@@ -1905,11 +1936,26 @@ function App() {
     setChatHistory(prev => [...prev, userMsg]);
     setChatLoading(true);
     try {
-      const res = await api(`/api/notes/${selected.id}/chat`, {
-        method: 'POST',
-        body: JSON.stringify({ message: message.trim(), history: chatHistory }),
-      });
-      const reply = res.success ? res.data.reply : (res.error || 'Something went wrong.');
+      let reply;
+      if (deviceAI && deviceAIReady) {
+        // On-device path
+        const noteContext = {
+          title: selected.title,
+          body: selected.body,
+          transcript: selected.transcript,
+          summary: selected.summary,
+          keyPoints: selected.keyPointsJson,
+        };
+        reply = await chatOnDevice(noteContext, chatHistory, message.trim());
+        if (!reply) reply = 'On-device AI returned no response. Try again.';
+      } else {
+        // Server path
+        const res = await api(`/api/notes/${selected.id}/chat`, {
+          method: 'POST',
+          body: JSON.stringify({ message: message.trim(), history: chatHistory }),
+        });
+        reply = res.success ? res.data.reply : (res.error || 'Something went wrong.');
+      }
       setChatHistory(prev => [...prev, { role: 'assistant', content: reply }]);
     } catch (err) {
       setChatHistory(prev => [...prev, { role: 'assistant', content: `Error: ${err?.message || 'request failed'}` }]);
