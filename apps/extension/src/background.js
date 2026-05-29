@@ -29,12 +29,13 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'START_RECORDING') startRecording(message.tabId, message.meetingUrl).then(sendResponse);
+  if (message.type === 'START_RECORDING') startRecording(message.tabId ?? sender.tab?.id, message.meetingUrl).then(sendResponse);
   if (message.type === 'STOP_RECORDING') stopRecording().then(sendResponse);
   if (message.type === 'STATUS') {
     const elapsedSeconds = recordingStartedAt ? Math.floor((Date.now() - recordingStartedAt) / 1000) : 0;
     sendResponse({ recording: Boolean(recorder), current, elapsedSeconds });
   }
+  if (message.type === 'GET_TAB_ID') sendResponse({ tabId: sender.tab?.id });
   if (message.type === 'CLIP_PAGE') sendClip(sender.tab || message.tab, message.selectionText).then(sendResponse);
   return true;
 });

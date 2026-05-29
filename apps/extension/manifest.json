@@ -4,7 +4,24 @@
   "version": "0.1.0",
   "description": "Opt-in meeting recorder for AI Notes. Free/self-hosted backend.",
   "permissions": ["storage", "tabs", "tabCapture", "activeTab", "scripting", "contextMenus"],
-  "host_permissions": ["http://localhost:3001/*", "http://localhost:8080/*", "https://meet.google.com/*", "https://teams.microsoft.com/*", "https://*.zoom.us/wc/*"],
+  "host_permissions": [
+    "http://localhost:3001/*",
+    "http://localhost:8080/*",
+    "https://meet.google.com/*",
+    "https://teams.microsoft.com/*",
+    "https://*.zoom.us/wc/*"
+  ],
   "background": { "service_worker": "background.js", "type": "module" },
-  "action": { "default_popup": "popup.html" }
+  "action": { "default_popup": "popup.html" },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://meet.google.com/*",
+        "https://teams.microsoft.com/*",
+        "https://*.zoom.us/wc/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
 }

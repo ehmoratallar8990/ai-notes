@@ -154,6 +154,9 @@ export function createFileStore({ filePath = path.resolve(process.cwd(), 'data/a
         source: attrs.source || 'manual',
         meetingPlatform: attrs.meetingPlatform || null,
         meetingUrl: attrs.meetingUrl || null,
+        audioPath: attrs.audioPath || null,
+        isProtected: false,
+        notePassword: null,
         createdAt: now(),
         updatedAt: now(),
         deletedAt: null
@@ -203,7 +206,7 @@ export function createFileStore({ filePath = path.resolve(process.cwd(), 'data/a
     updateNote(userId, id, attrs) {
       const note = db.notes.find((n) => n.userId === userId && n.id === id && !n.deletedAt);
       if (!note) return null;
-      for (const key of ['folderId', 'title', 'body', 'transcript', 'transcriptSegments', 'speakerCount', 'transcriptionStatus', 'summary', 'keyPointsJson', 'actionItemsJson', 'mindMapJson', 'pinned', 'tags', 'format']) {
+      for (const key of ['folderId', 'title', 'body', 'transcript', 'transcriptSegments', 'speakerCount', 'transcriptionStatus', 'summary', 'keyPointsJson', 'actionItemsJson', 'mindMapJson', 'pinned', 'tags', 'format', 'audioPath', 'isProtected', 'notePassword']) {
         if (Object.hasOwn(attrs, key)) note[key] = attrs[key];
       }
       note.updatedAt = now();
@@ -224,6 +227,7 @@ export function createFileStore({ filePath = path.resolve(process.cwd(), 'data/a
       return clone(recording);
     },
     listRecordingsForNote(userId, noteId) { return clone(db.recordings.filter((r) => r.userId === userId && r.noteId === noteId)); },
+    getRecordingByNoteId(userId, noteId) { return clone(db.recordings.find((r) => r.userId === userId && r.noteId === noteId) || null); },
     createAttachment(userId, attrs) {
       const attachment = { id: randomUUID(), userId, createdAt: now(), ...attrs };
       db.attachments.push(attachment);

@@ -75,6 +75,9 @@ export function createMemoryStore() {
         tags: Array.isArray(attrs.tags) ? [...attrs.tags] : [],
         format: attrs.format || 'text',
         source: attrs.source || 'manual', meetingPlatform: attrs.meetingPlatform || null, meetingUrl: attrs.meetingUrl || null,
+        audioPath: attrs.audioPath || null,
+        isProtected: false,
+        notePassword: null,
         createdAt: now(), updatedAt: now(), deletedAt: null
       };
       db.notes.push(note); return clone(note);
@@ -119,7 +122,7 @@ export function createMemoryStore() {
     getNote(userId, id) { return clone(db.notes.find(n => n.userId === userId && n.id === id && !n.deletedAt) || null); },
     updateNote(userId, id, attrs) {
       const note = db.notes.find(n => n.userId === userId && n.id === id && !n.deletedAt); if (!note) return null;
-      for (const key of ['folderId','title','body','transcript','transcriptSegments','speakerCount','transcriptionStatus','summary','keyPointsJson','actionItemsJson','mindMapJson','pinned','tags','format']) {
+      for (const key of ['folderId','title','body','transcript','transcriptSegments','speakerCount','transcriptionStatus','summary','keyPointsJson','actionItemsJson','mindMapJson','pinned','tags','format','audioPath','isProtected','notePassword']) {
         if (Object.hasOwn(attrs, key)) note[key] = attrs[key];
       }
       note.updatedAt = now(); return clone(note);
@@ -130,6 +133,7 @@ export function createMemoryStore() {
       db.recordings.push(recording); return clone(recording);
     },
     listRecordingsForNote(userId, noteId) { return clone(db.recordings.filter(r => r.userId === userId && r.noteId === noteId)); },
+    getRecordingByNoteId(userId, noteId) { return clone(db.recordings.find(r => r.userId === userId && r.noteId === noteId) || null); },
     createAttachment(userId, attrs) {
       const attachment = { id: randomUUID(), userId, createdAt: now(), ...attrs };
       db.attachments.push(attachment); return clone(attachment);

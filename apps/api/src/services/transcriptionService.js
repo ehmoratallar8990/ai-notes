@@ -88,12 +88,13 @@ export function createWhisperHttpProvider({
   baseUrl = process.env.WHISPER_HTTP_URL || 'http://localhost:8765',
 } = {}) {
   return {
-    async transcribe({ filePath, mimeType = 'audio/webm' }) {
+    async transcribe({ filePath, mimeType = 'audio/webm', language = null }) {
       const fileBuffer = await readFile(filePath);
       const ext = extname(filePath) || '.webm';
       const formData = new FormData();
       formData.append('audio', new Blob([fileBuffer], { type: mimeType }), basename(filePath));
       formData.append('ext', ext);
+      if (language) formData.append('language', language);
       const res = await fetch(`${baseUrl}/transcribe`, { method: 'POST', body: formData });
       if (!res.ok) {
         const text = await res.text().catch(() => '');

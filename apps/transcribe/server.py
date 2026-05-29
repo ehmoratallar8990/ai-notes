@@ -51,9 +51,10 @@ else:
     print("[whisper] No HF_TOKEN — speaker diarization disabled.", file=sys.stderr, flush=True)
 
 
-def transcribe(path):
+def transcribe(path, language=None):
+    lang = language or LANGUAGE  # per-request overrides env default
     segs_gen, _ = model.transcribe(
-        path, beam_size=5, word_timestamps=True, language=LANGUAGE
+        path, beam_size=5, word_timestamps=True, language=lang
     )
     segments = [
         {"speaker": "Speaker 1", "start": s.start, "end": s.end, "text": s.text.strip()}
@@ -147,11 +148,14 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             ext = fields.get("ext", [".webm"])[0]
+            lang_field = fields.get("language", [None])[0]
+            req_language = lang_field.strip() if lang_field else None
+
             with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as f:
                 f.write(audio)
                 tmp = f.name
 
-            result = transcribe(tmp)
+            result = transcribe(tmp, language=req_language)
             os.unlink(tmp)
             self._send(200, result)
         except Exception as e:

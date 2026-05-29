@@ -1,8 +1,21 @@
 import express from 'express';
 import crypto from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createReadStream, existsSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import multer from 'multer';
 import { requireUser } from '../middleware/auth.js';
 import { createTranscriptionProvider } from '../services/transcriptionService.js';
+
+const execFileAsync = promisify(execFile);
+// Resolve paths relative to this file regardless of CWD
+// __fileDir = apps/api/src/routes/, 4 levels up = monorepo root
+const __fileDir = path.dirname(fileURLToPath(import.meta.url));
+const MONOREPO_ROOT = path.resolve(__fileDir, '../../../..');
+const EXT_ZIP = path.join(MONOREPO_ROOT, 'apps', 'extension', 'extension.zip');
+const EXT_DIST = path.join(MONOREPO_ROOT, 'apps', 'extension', 'dist');
 
 const upload = multer({ dest: 'uploads/extension', limits: { fileSize: 250 * 1024 * 1024 } });
 const hash = (value) => crypto.createHash('sha256').update(value).digest('hex');
@@ -60,6 +73,30 @@ export function extensionRouter(store) {
         data: { note: failed, recording }
       });
     }
+  });
+
+  // Serve pre-built extension zip (built by `make extension-zip`)
+  router.get('/download', async (_req, res) => {
+    if (existsSync(EXT_ZIP)) {
+      res.setHeader('Content-Disposition', 'attachment; filename="ai-notes-extension.zip"');
+      res.setHeader('Content-Type', 'application/zip');
+      return createReadStream(EXT_ZIP).pipe(res);
+    }
+
+    // Try building on-demand with system zip if dist/ exists
+    if (existsSync(EXT_DIST)) {
+      try {
+        await execFileAsync('zip', ['-r', EXT_ZIP, '.'], { cwd: EXT_DIST });
+        res.setHeader('Content-Disposition', 'attachment; filename="ai-notes-extension.zip"');
+        res.setHeader('Content-Type', 'application/zip');
+        return createReadStream(EXT_ZIP).pipe(res);
+      } catch (_) { /* zip not available */ }
+    }
+
+    return res.status(404).json({
+      success: false,
+      error: 'Extension zip not found. Run `make extension-zip` from the monorepo root.',
+    });
   });
 
   router.post('/clips', requireUser, (req,res)=>{

@@ -2,6 +2,9 @@ import express from 'express';
 import { requireUser } from '../middleware/auth.js';
 import { createAiProvider } from '../services/aiNoteService.js';
 import { attachmentsRouter as makeAttachmentsRouter } from './attachments.js';
+import { scrypt, randomBytes, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
+const scryptAsync = promisify(scrypt);
 
 const WIKILINK_RE = /\[\[([^\]]+)\]\]/g;
 
@@ -100,6 +103,35 @@ export function notesRouter(store) {
   router.post('/:id/action-items', async (req, res) => generate(req, res, 'actionItemsJson', ai.actionItems.bind(ai), store));
   router.post('/:id/mind-map', async (req, res) => generate(req, res, 'mindMapJson', ai.mindMap.bind(ai), store));
 
+  router.post('/:id/chat', async (req, res) => {
+    const note = store.getNote(req.session.userId, req.params.id);
+    if (!note) return res.status(404).json({ success: false, error: 'Note not found' });
+    const { message, history = [] } = req.body;
+    if (!message?.trim()) return res.status(400).json({ success: false, error: 'message is required' });
+
+    const parts = [];
+    if (note.title) parts.push(`Title: ${note.title}`);
+    if (note.body?.trim()) parts.push(`Content:\n${note.body.slice(0, 3000)}`);
+    if (note.transcript?.trim()) parts.push(`Transcript:\n${note.transcript.slice(0, 3000)}`);
+    if (note.summary) parts.push(`Summary: ${note.summary}`);
+    if (Array.isArray(note.keyPointsJson) && note.keyPointsJson.length)
+      parts.push(`Key points:\n${note.keyPointsJson.map(k => `- ${k}`).join('\n')}`);
+    const context = parts.join('\n\n');
+
+    const messages = [
+      { role: 'system', content: `You are a helpful assistant. Answer questions about the following note concisely and accurately.\n\n${context}` },
+      ...history.slice(-20),
+      { role: 'user', content: message.trim() },
+    ];
+
+    try {
+      const reply = await ai.chat(messages);
+      res.json({ success: true, data: { reply } });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err?.message || 'Chat failed' });
+    }
+  });
+
   router.patch('/:id/pin', (req, res) => {
     const note = store.updateNote(req.session.userId, req.params.id, { pinned: true });
     if (!note) return res.status(404).json({ success: false, error: 'Note not found' });
@@ -164,6 +196,41 @@ export function notesRouter(store) {
       return res.json(note);
     }
     return res.status(400).json({ success: false, error: 'Unsupported export format' });
+  });
+
+  // Set/update/remove password protection
+  router.post('/:id/protect', async (req, res) => {
+    const note = store.getNote(req.session.userId, req.params.id);
+    if (!note) return res.status(404).json({ success: false, error: 'Note not found' });
+    const { password, remove } = req.body;
+    if (remove) {
+      const updated = store.updateNote(req.session.userId, req.params.id, { isProtected: false, notePassword: null });
+      return res.json({ success: true, data: updated });
+    }
+    if (!password || password.length < 1) return res.status(400).json({ success: false, error: 'Password required' });
+    const salt = randomBytes(16).toString('hex');
+    const derivedKey = await scryptAsync(password, salt, 32);
+    const hash = `${salt}:${derivedKey.toString('hex')}`;
+    const updated = store.updateNote(req.session.userId, req.params.id, { isProtected: true, notePassword: hash });
+    return res.json({ success: true, data: updated });
+  });
+
+  // Verify password to unlock
+  router.post('/:id/unlock', async (req, res) => {
+    const note = store.getNote(req.session.userId, req.params.id);
+    if (!note) return res.status(404).json({ success: false, error: 'Note not found' });
+    if (!note.isProtected || !note.notePassword) return res.json({ success: true });
+    const { password } = req.body;
+    if (!password) return res.status(401).json({ success: false, error: 'Password required' });
+    try {
+      const [salt, storedHash] = note.notePassword.split(':');
+      const derivedKey = await scryptAsync(password, salt, 32);
+      const match = timingSafeEqual(Buffer.from(storedHash, 'hex'), derivedKey);
+      if (!match) return res.status(401).json({ success: false, error: 'Incorrect password' });
+      return res.json({ success: true });
+    } catch {
+      return res.status(401).json({ success: false, error: 'Incorrect password' });
+    }
   });
 
   return router;
