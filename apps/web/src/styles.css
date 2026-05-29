@@ -171,6 +171,15 @@ select.input-field { appearance: none; background-image: url("data:image/svg+xml
 }
 .lang-select:hover { border-color: rgba(242,239,233,0.2); color: var(--paper); }
 .lang-select:disabled { opacity: 0.6; cursor: default; }
+.mic-select {
+  height: 30px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--ink-lighter); color: var(--text-secondary);
+  font-size: 12px; font-weight: 600; padding: 0 6px; cursor: pointer;
+  appearance: none; outline: none; transition: border-color 0.15s;
+  max-width: 160px; overflow: hidden; text-overflow: ellipsis;
+}
+.mic-select:hover { border-color: rgba(242,239,233,0.2); color: var(--paper); }
+.mic-select:disabled { opacity: 0.6; cursor: default; }
 
 .model-progress-bar {
   height: 3px; border-radius: 99px; background: var(--border); overflow: hidden;
@@ -778,6 +787,24 @@ select.input-field { appearance: none; background-image: url("data:image/svg+xml
   pointer-events: none;
 }
 .audio-time { font-size: 11px; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.audio-download-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); font-size: 14px; padding: 2px 4px;
+  transition: color 0.15s; flex-shrink: 0;
+}
+.audio-download-btn:hover { color: var(--paper); }
+.ai-model-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--text-secondary); margin-top: 4px;
+}
+.ai-model-label { flex-shrink: 0; color: var(--text-muted); }
+.ai-model-select {
+  flex: 1; background: var(--ink-lighter); border: 1px solid var(--border);
+  color: var(--text-primary); border-radius: var(--radius-sm);
+  font-family: var(--font-body); font-size: 12px; padding: 5px 8px;
+  outline: none; cursor: pointer;
+}
+.ai-model-select:focus { border-color: var(--accent); }
 
 /* ── Lock overlay ───────────────────────────────────────────────────────────── */
 .lock-overlay {

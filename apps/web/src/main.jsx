@@ -7,6 +7,44 @@ import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '';
 
+// ── Local audio storage (IndexedDB) ───────────────────────────────────────────
+const AudioDB = (() => {
+  const DB = 'ai-notes-audio', STORE = 'recs';
+  function open() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open(DB, 1);
+      r.onupgradeneeded = e => e.target.result.createObjectStore(STORE);
+      r.onsuccess = e => res(e.target.result);
+      r.onerror = e => rej(e.target.error);
+    });
+  }
+  return {
+    async save(id, blob) {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).put(blob, id);
+        tx.oncomplete = res; tx.onerror = e => rej(e.target.error);
+      });
+    },
+    async get(id) {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const r = db.transaction(STORE).objectStore(STORE).get(id);
+        r.onsuccess = e => res(e.target.result); r.onerror = e => rej(e.target.error);
+      });
+    },
+    async del(id) {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).delete(id);
+        tx.oncomplete = res; tx.onerror = e => rej(e.target.error);
+      });
+    },
+  };
+})();
+
 async function api(path, options = {}) {
   const res = await fetch(`${API}${path}`, {
     credentials: 'include',
@@ -75,14 +113,18 @@ function formatTimer(s) {
   return `${m}:${(s % 60).toString().padStart(2, '0')}`;
 }
 
-function formatDate(iso) {
+function formatDate(iso, lang = 'en') {
   if (!iso) return '';
   const d = new Date(iso);
-  const diffH = (Date.now() - d) / 3600000;
-  if (diffH < 1) return 'just now';
-  if (diffH < 24) return `${Math.floor(diffH)}h ago`;
-  if (diffH < 48) return 'yesterday';
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const diffMs = Date.now() - d;
+  const diffH = diffMs / 3_600_000;
+  try {
+    const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' });
+    if (diffH < 1) return rtf.format(-Math.round(diffMs / 60_000), 'minute');
+    if (diffH < 24) return rtf.format(-Math.floor(diffH), 'hour');
+    if (diffH < 48) return rtf.format(-1, 'day');
+  } catch (_) {}
+  return d.toLocaleDateString(lang, { month: 'short', day: 'numeric' });
 }
 
 function formatSegmentTime(secs) {
@@ -96,6 +138,14 @@ function getSpeakerColor(speaker) {
   const num = match ? parseInt(match[0], 10) : 1;
   return `sc-${((num - 1) % 5) + 1}`;
 }
+
+const AI_MODELS = [
+  { id: 'Qwen/Qwen2.5-0.5B-Instruct',           label: 'Qwen2.5 0.5B',       size: '~400 MB' },
+  { id: 'onnx-community/Qwen3.5-0.8B-ONNX-OPT', label: 'Qwen3.5 0.8B (GPU)', size: '~800 MB' },
+  { id: 'HuggingFaceTB/SmolLM2-135M-Instruct',  label: 'SmolLM2 135M',       size: '~100 MB' },
+  { id: 'HuggingFaceTB/SmolLM2-360M-Instruct',  label: 'SmolLM2 360M',       size: '~280 MB' },
+  { id: 'google/gemma-3n-E2B-it',               label: 'Gemma 3n E2B',       size: '~1.3 GB' },
+];
 
 // ── Small atoms ───────────────────────────────────────────────────────────────
 function StatusMessage({ notice }) {
@@ -286,7 +336,7 @@ function ProfilePage({ user, notes, tr, notice, onSaveProfile, onAddPasskey, onD
 }
 
 // ── Note list item ────────────────────────────────────────────────────────────
-function NoteCard({ note, isSelected, onClick }) {
+function NoteCard({ note, isSelected, onClick, lang = 'en' }) {
   const icon = SOURCE_ICONS[note.source] || '📝';
   const label = SOURCE_LABELS[note.source] || 'Note';
   return (
@@ -304,7 +354,7 @@ function NoteCard({ note, isSelected, onClick }) {
       <div className="note-card-meta">
         <span className="note-type-badge">{icon} {label}</span>
         {note.meetingPlatform && <span className="note-platform-badge">{note.meetingPlatform}</span>}
-        <span className="note-card-date">{formatDate(note.updatedAt || note.createdAt)}</span>
+        <span className="note-card-date">{formatDate(note.updatedAt || note.createdAt, lang)}</span>
       </div>
       {Array.isArray(note.tags) && note.tags.length > 0 && (
         <div className="note-card-tags">
@@ -316,7 +366,7 @@ function NoteCard({ note, isSelected, onClick }) {
 }
 
 // ── Browse panel (left column) ────────────────────────────────────────────────
-function BrowsePanel({ notes, folders, tags, selected, filters, onFilter, onSelect, onQuickCreate, onCreateFolder, onMoveNote, tr }) {
+function BrowsePanel({ notes, folders, tags, selected, filters, onFilter, onSelect, onQuickCreate, onCreateFolder, onMoveNote, tr, lang }) {
   const [newTitle, setNewTitle] = useState('');
   const [dragOver, setDragOver] = useState(null); // folder id | 'root' | null
 
@@ -352,24 +402,24 @@ function BrowsePanel({ notes, folders, tags, selected, filters, onFilter, onSele
     <aside className="browse-panel card">
       <input
         className="input-field browse-search"
-        placeholder="Search notes…"
+        placeholder={tr('browse.search')}
         value={filters.search}
         onChange={e => onFilter({ search: e.target.value })}
       />
 
       <form className="quick-create-form" onSubmit={handleCreate}>
-        <input className="input-field" placeholder="New note title…" value={newTitle} onChange={e => setNewTitle(e.target.value)} />
+        <input className="input-field" placeholder={tr('browse.newNote')} value={newTitle} onChange={e => setNewTitle(e.target.value)} />
         <button className="btn-primary qc-btn" type="submit" disabled={!newTitle.trim()}>+</button>
       </form>
 
       <div className="browse-section">
-        <p className="browse-label">Folders</p>
+        <p className="browse-label">{tr('browse.folders')}</p>
         <button
           className={`folder-item ${!filters.folderId ? 'is-active' : ''} ${dragOver === 'root' ? 'drag-over' : ''}`}
           onClick={() => onFilter({ folderId: null })}
           {...folderDropProps('root')}
         >
-          All notes <span className="folder-count">{notes.length}</span>
+          {tr('notes.all')} <span className="folder-count">{notes.length}</span>
         </button>
         {folders.map(f => (
           <button
@@ -382,14 +432,14 @@ function BrowsePanel({ notes, folders, tags, selected, filters, onFilter, onSele
           </button>
         ))}
         <form className="folder-inline-form" onSubmit={handleFolderCreate}>
-          <input className="input-field folder-input" name="name" placeholder="New folder…" />
+          <input className="input-field folder-input" name="name" placeholder={tr('browse.newFolder')} />
           <button className="btn-primary qc-btn" type="submit">+</button>
         </form>
       </div>
 
       {tags.length > 0 && (
         <div className="browse-section">
-          <p className="browse-label">Tags</p>
+          <p className="browse-label">{tr('notes.tags')}</p>
           <div className="tag-cloud">
             {tags.map(tag => (
               <button key={tag} className={`tag-chip ${filters.tag === tag ? 'is-active' : ''}`} onClick={() => onFilter({ tag: filters.tag === tag ? null : tag })}>
@@ -402,9 +452,9 @@ function BrowsePanel({ notes, folders, tags, selected, filters, onFilter, onSele
 
       <div className="note-list">
         {notes.length === 0 ? (
-          <p className="browse-empty">No notes found</p>
+          <p className="browse-empty">{tr('browse.empty')}</p>
         ) : (
-          notes.map(note => <NoteCard key={note.id} note={note} isSelected={selected?.id === note.id} onClick={onSelect} />)
+          notes.map(note => <NoteCard key={note.id} note={note} isSelected={selected?.id === note.id} onClick={onSelect} lang={lang} />)
         )}
       </div>
     </aside>
@@ -412,7 +462,7 @@ function BrowsePanel({ notes, folders, tags, selected, filters, onFilter, onSele
 }
 
 // ── Transcript view ───────────────────────────────────────────────────────────
-function TranscriptSection({ note, onUpdate, audioPlayerRef }) {
+function TranscriptSection({ note, onUpdate, audioPlayerRef, tr }) {
   const [open, setOpen] = useState(true);
   const [search, setSearch] = useState('');
   const [copied, setCopied] = useState(false);
@@ -481,10 +531,10 @@ function TranscriptSection({ note, onUpdate, audioPlayerRef }) {
         <button className="transcript-toggle" onClick={() => setOpen(o => !o)}>
           <span className="transcript-title">
             <span className="transcript-icon">🎙</span>
-            Transcript
+            {tr ? tr('notes.transcript') : 'Transcript'}
             {speakerCount > 0 && (
               <span className="transcript-speaker-count">
-                {speakerCount} {speakerCount === 1 ? 'speaker' : 'speakers'}
+                {speakerCount} {speakerCount === 1 ? (tr ? tr('notes.speaker') : 'speaker') : (tr ? tr('notes.speakers') : 'speakers')}
               </span>
             )}
           </span>
@@ -492,7 +542,7 @@ function TranscriptSection({ note, onUpdate, audioPlayerRef }) {
         </button>
         {open && (hasSegments || hasPlain) && (
           <button className={`transcript-copy ${copied ? 'is-copied' : ''}`} onClick={copyTranscript}>
-            {copied ? '✓ Copied' : 'Copy'}
+            {copied ? (tr ? `✓ ${tr('notes.copied')}` : '✓ Copied!') : (tr ? tr('notes.copy') : 'Copy')}
           </button>
         )}
       </div>
@@ -712,12 +762,21 @@ function AIResultBlock({ selected, aiLoading, onGenerate, onToggleActionItem, on
 }
 
 // ── Audio player ─────────────────────────────────────────────────────────────
-function AudioPlayer({ noteId, imperativeRef }) {
+function AudioPlayer({ noteId, imperativeRef, tr }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [unavailable, setUnavailable] = useState(false);
+  const [localUrl, setLocalUrl] = useState(null);
+
+  useEffect(() => {
+    let url = null;
+    AudioDB.get(noteId).then(blob => {
+      if (blob) { url = URL.createObjectURL(blob); setLocalUrl(url); }
+    }).catch(() => {});
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [noteId]);
 
   useEffect(() => {
     if (imperativeRef) {
@@ -743,28 +802,45 @@ function AudioPlayer({ noteId, imperativeRef }) {
     audioRef.current.currentTime = pct * duration;
   }
 
-  if (unavailable) return null;
+  function download() {
+    const src = localUrl || `${API}/api/recordings/${noteId}/audio`;
+    const a = document.createElement('a');
+    a.href = src;
+    a.download = `recording-${noteId}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  const src = localUrl || `${API}/api/recordings/${noteId}/audio`;
+
+  if (unavailable && !localUrl) return null;
 
   return (
     <div className="audio-player">
       <audio
         ref={audioRef}
-        src={`${API}/api/recordings/${noteId}/audio`}
+        src={src}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
         onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime ?? 0)}
         onLoadedMetadata={() => setDuration(audioRef.current?.duration ?? 0)}
-        onError={() => setUnavailable(true)}
+        onError={() => { if (!localUrl) setUnavailable(true); }}
         preload="metadata"
       />
       <button className="audio-play-btn" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'}>
         {playing ? '⏸' : '▶'}
       </button>
-      <div className="audio-scrubber" onClick={seek} role="slider" aria-label="Playback position">
-        <div className="audio-scrubber-fill" style={{ width: duration ? `${(currentTime / duration) * 100}%` : '0%' }} />
+      <div className="audio-scrubber" onClick={seek}>
+        <div className="audio-scrubber-fill" style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }} />
       </div>
-      <span className="audio-time">{formatSegmentTime(currentTime)} / {formatSegmentTime(duration)}</span>
+      <span className="audio-time">
+        {formatTimer(Math.floor(currentTime))}{duration ? ` / ${formatTimer(Math.floor(duration))}` : ''}
+      </span>
+      <button className="audio-download-btn" onClick={download} title={tr ? tr('audio.download') : 'Download'} aria-label="Download">
+        ⬇
+      </button>
     </div>
   );
 }
@@ -853,8 +929,8 @@ function NoteViewPanel({ selected, folders, onUpdate, onPin, onDelete, onNotice,
       <section className="note-view-panel card detail-empty">
         <div className="empty-state-content">
           <p className="empty-state-icon">🎙</p>
-          <p className="empty-state-title">Select a note or start recording</p>
-          <p className="empty-state-hint">Voice notes are transcribed automatically with speaker identification</p>
+          <p className="empty-state-title">{tr('notes.selectHint')}</p>
+          <p className="empty-state-hint">{tr('notes.selectSubhint')}</p>
         </div>
       </section>
     );
@@ -876,7 +952,7 @@ function NoteViewPanel({ selected, folders, onUpdate, onPin, onDelete, onNotice,
   }
 
   async function handleDelete() {
-    if (!window.confirm('Delete this note?')) return;
+    if (!window.confirm(tr('notes.deleteConfirm'))) return;
     await api(`/api/notes/${selected.id}`, { method: 'DELETE' });
     onDelete(selected.id);
   }
@@ -897,14 +973,14 @@ function NoteViewPanel({ selected, folders, onUpdate, onPin, onDelete, onNotice,
   }
 
   async function handleRemoveProtection() {
-    if (!window.confirm('Remove password protection from this note?')) return;
+    if (!window.confirm(tr('notes.removeProtectionConfirm'))) return;
     await onRemoveProtection(selected.id);
   }
 
   const transcriptionBadge = selected.transcriptionStatus === 'processing'
-    ? <span className="status-badge processing">Transcribing…</span>
+    ? <span className="status-badge processing">{tr('notes.transcribing')}</span>
     : selected.transcriptionStatus === 'failed'
-    ? <span className="status-badge failed">Transcription failed</span>
+    ? <span className="status-badge failed">{tr('notes.failed')}</span>
     : null;
 
   const hasAudio = Boolean(selected.audioPath);
@@ -989,13 +1065,14 @@ function NoteViewPanel({ selected, folders, onUpdate, onPin, onDelete, onNotice,
       )}
 
       {!isLocked && hasAudio && (
-        <AudioPlayer noteId={selected.id} imperativeRef={audioPlayerRef} />
+        <AudioPlayer noteId={selected.id} imperativeRef={audioPlayerRef} tr={tr} />
       )}
 
       <TranscriptSection
         note={selected}
         onUpdate={onUpdate}
         audioPlayerRef={hasAudio && !isLocked ? audioPlayerRef : null}
+        tr={tr}
       />
     </section>
   );
@@ -1075,7 +1152,7 @@ function ChatPanel({ selected, chatHistory, chatLoading, onChat, onClearChat, tr
   );
 }
 
-function AISearchPanel({ selected, aiLoading, onGenerate, onToggleActionItem, searchResults, searchLoading, onSearch, deviceAI, deviceAIReady, deviceAILoading, aiModelProgress, onToggleDeviceAI, onTranslate, lang, chatHistory, chatLoading, onChat, onClearChat, tr }) {
+function AISearchPanel({ selected, aiLoading, onGenerate, onToggleActionItem, searchResults, searchLoading, onSearch, deviceAI, deviceAIReady, deviceAILoading, aiModelProgress, onToggleDeviceAI, onTranslate, lang, chatHistory, chatLoading, onChat, onClearChat, tr, selectedAIModel, onChangeAIModel }) {
   const [tab, setTab] = useState('ai');
   const aiPct = aiModelProgress?.pct ?? 0;
 
@@ -1103,6 +1180,21 @@ function AISearchPanel({ selected, aiLoading, onGenerate, onToggleActionItem, se
           {deviceAILoading && (
             <div className="model-progress-bar" style={{ marginTop: 4 }}>
               <div className="model-progress-fill" style={{ width: `${aiPct}%`, background: 'var(--teal)' }} />
+            </div>
+          )}
+          {deviceAI && (
+            <div className="ai-model-row">
+              <span className="ai-model-label">{tr('ai.model')}</span>
+              <select
+                className="ai-model-select"
+                value={selectedAIModel}
+                onChange={e => onChangeAIModel(e.target.value)}
+                disabled={Boolean(aiLoading) || deviceAILoading}
+              >
+                {AI_MODELS.map(m => (
+                  <option key={m.id} value={m.id}>{m.label} ({m.size})</option>
+                ))}
+              </select>
             </div>
           )}
           {!selected ? (
@@ -1299,7 +1391,7 @@ const RECORD_LANGS = [
   { value: 'ja', label: '日本語' },
 ];
 
-function RecordControl({ recording, recordingPhase, recordingSeconds, waveformBars, onStart, onStop, isFab, deviceTranscribe, deviceModelReady, deviceModelLoading, modelProgress, onToggleDeviceTranscribe, recordingLang, onChangeLang }) {
+function RecordControl({ recording, recordingPhase, recordingSeconds, waveformBars, onStart, onStop, isFab, deviceTranscribe, deviceModelReady, deviceModelLoading, modelProgress, onToggleDeviceTranscribe, recordingLang, onChangeLang, micDevices, selectedMicId, onChangeMic }) {
   const isUploading = recordingPhase === 'uploading';
   const cls = isFab ? 'record-fab' : 'btn-record';
   const pct = modelProgress?.pct ?? 0;
@@ -1331,6 +1423,20 @@ function RecordControl({ recording, recordingPhase, recordingSeconds, waveformBa
         title="Recording language (Auto = detect)"
       >
         {RECORD_LANGS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+      </select>
+      <select
+        className="mic-select"
+        value={selectedMicId}
+        onChange={e => onChangeMic?.(e.target.value)}
+        disabled={recording || isUploading}
+        title="Microphone input"
+      >
+        <option value="">System default</option>
+        {(micDevices || []).filter(d => d.deviceId && d.deviceId !== 'default').map(d => (
+          <option key={d.deviceId} value={d.deviceId}>
+            {d.label || `Microphone ${d.deviceId.slice(0, 6)}`}
+          </option>
+        ))}
       </select>
     </div>
   ) : null;
@@ -1387,9 +1493,10 @@ function Dashboard({
   chatHistory, chatLoading, onChat, onClearChat,
   tr, notice, workspaceNotice, lang,
   onFilter, onSelect, onQuickCreate, onCreateFolder, onMoveNote, onPin, onUpdate, onDelete, onGenerate, onToggleActionItem,
-  onSearch, startRecording, stopRecording, recordingLang, onChangeLang, onSaveProfile, onAddPasskey, onDeletePasskey, passkeys,
+  onSearch, startRecording, stopRecording, recordingLang, onChangeLang, micDevices, selectedMicId, onChangeMic,
+  onSaveProfile, onAddPasskey, onDeletePasskey, passkeys,
   unlockedNotes, onProtectNote, onRemoveProtection, onUnlockNote, onUnlockBiometric,
-  onLogout, onNotice,
+  onLogout, onNotice, selectedAIModel, onChangeAIModel,
 }) {
   const [mobileView, setMobileView] = useState('list');
 
@@ -1421,6 +1528,9 @@ function Dashboard({
               onToggleDeviceTranscribe={onToggleDeviceTranscribe}
               recordingLang={recordingLang}
               onChangeLang={onChangeLang}
+              micDevices={micDevices}
+              selectedMicId={selectedMicId}
+              onChangeMic={onChangeMic}
               isFab={false}
             />
           )}
@@ -1448,6 +1558,7 @@ function Dashboard({
               onCreateFolder={onCreateFolder}
               onMoveNote={onMoveNote}
               tr={tr}
+              lang={lang}
             />
             <NoteViewPanel
               selected={selected}
@@ -1483,6 +1594,8 @@ function Dashboard({
               onChat={onChat}
               onClearChat={onClearChat}
               tr={tr}
+              selectedAIModel={selectedAIModel}
+              onChangeAIModel={onChangeAIModel}
             />
           </div>
 
@@ -1545,12 +1658,15 @@ function App() {
   const [chatLoading, setChatLoading] = useState(false);
 
   const [recordingLang, setRecordingLang] = useState('');
-  const [deviceAI, setDeviceAI] = useState(false);
+  const [micDevices, setMicDevices] = useState([]);
+  const [selectedMicId, setSelectedMicId] = useState('');
+  const DEFAULT_AI_MODEL = 'Qwen/Qwen2.5-0.5B-Instruct';
+  const [deviceAI, setDeviceAI] = useState(() => localStorage.getItem('deviceAI') !== '0');
   const [deviceAIReady, setDeviceAIReady] = useState(false);
   const [deviceAILoading, setDeviceAILoading] = useState(false);
   const [aiModelProgress, setAiModelProgress] = useState(null);
-  const [selectedAIModel, setSelectedAIModel] = useState('HuggingFaceTB/SmolLM2-135M-Instruct');
-  const selectedAIModelRef = useRef('HuggingFaceTB/SmolLM2-135M-Instruct');
+  const [selectedAIModel, setSelectedAIModel] = useState(() => localStorage.getItem('selectedAIModel') || DEFAULT_AI_MODEL);
+  const selectedAIModelRef = useRef(localStorage.getItem('selectedAIModel') || DEFAULT_AI_MODEL);
 
   const recorder = useRef(null);
   const chunks = useRef([]);
@@ -1566,6 +1682,12 @@ function App() {
 
   useEffect(() => { localStorage.setItem('lang', lang); }, [lang]);
 
+  // Re-init AI worker on page load if on-device AI was previously enabled
+  useEffect(() => {
+    if (deviceAI) startAIModelDownload(selectedAIModelRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     api('/api/auth/me').then(res => {
       if (res.success && res.data.user) {
@@ -1574,6 +1696,13 @@ function App() {
       }
     });
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+
+    // Enumerate audio devices on mount; labels populate after first mic permission grant
+    if (navigator.mediaDevices?.enumerateDevices) {
+      navigator.mediaDevices.enumerateDevices().then(devs => {
+        setMicDevices(devs.filter(d => d.kind === 'audioinput'));
+      }).catch(() => {});
+    }
 
     const onPrompt = e => { e.preventDefault(); setInstallPromptEvent(e); setCanInstall(true); };
     const onInstalled = () => { setInstallPromptEvent(null); setCanInstall(false); };
@@ -1820,6 +1949,7 @@ function App() {
   function changeAIModel(modelId) {
     setSelectedAIModel(modelId);
     selectedAIModelRef.current = modelId;
+    localStorage.setItem('selectedAIModel', modelId);
     if (deviceAI) {
       setDeviceAIReady(false);
       startAIModelDownload(modelId);
@@ -1829,8 +1959,10 @@ function App() {
   function toggleDeviceAI() {
     if (deviceAI) {
       setDeviceAI(false);
+      localStorage.setItem('deviceAI', '0');
     } else {
       setDeviceAI(true);
+      localStorage.setItem('deviceAI', '1');
       startAIModelDownload(selectedAIModelRef.current);
     }
   }
@@ -1937,17 +2069,20 @@ function App() {
     setChatLoading(true);
     try {
       let reply;
-      if (deviceAI && deviceAIReady) {
-        // On-device path
-        const noteContext = {
-          title: selected.title,
-          body: selected.body,
-          transcript: selected.transcript,
-          summary: selected.summary,
-          keyPoints: selected.keyPointsJson,
-        };
-        reply = await chatOnDevice(noteContext, chatHistory, message.trim());
-        if (!reply) reply = 'On-device AI returned no response. Try again.';
+      if (deviceAI) {
+        if (!deviceAIReady) {
+          reply = 'On-device AI is still loading. Please wait for the model to finish downloading.';
+        } else {
+          const noteContext = {
+            title: selected.title,
+            body: selected.body,
+            transcript: selected.transcript,
+            summary: selected.summary,
+            keyPoints: selected.keyPointsJson,
+          };
+          reply = await chatOnDevice(noteContext, chatHistory, message.trim());
+          if (!reply) reply = 'On-device AI returned no response. Try again.';
+        }
       } else {
         // Server path
         const res = await api(`/api/notes/${selected.id}/chat`, {
@@ -2091,7 +2226,14 @@ function App() {
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioConstraints = selectedMicId ? { deviceId: { exact: selectedMicId } } : true;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+      // Enumerate after permission granted so labels are populated
+      navigator.mediaDevices.enumerateDevices().then(devs => {
+        const mics = devs.filter(d => d.kind === 'audioinput');
+        setMicDevices(mics);
+        if (!selectedMicId && mics.length) setSelectedMicId(mics[0].deviceId);
+      });
       streamRef.current = stream;
       chunks.current = [];
       const mimeType = MediaRecorder.isTypeSupported?.('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : '';
@@ -2129,12 +2271,11 @@ function App() {
             });
             if (!res.success) throw new Error(res.error || 'Save failed.');
             setSelected(res.data);
-            // Upload audio blob so the player works
-            const ext = mime.includes('mp4') ? 'm4a' : 'webm';
-            const audioForm = new FormData();
-            audioForm.append('audio', blob, `voice-note.${ext}`);
-            const audioRes = await fetch(`${API}/api/recordings/${res.data.id}/audio`, { method: 'POST', credentials: 'include', body: audioForm });
-            if (audioRes.ok) { const j = await audioRes.json(); if (j.success) setSelected(j.data); }
+            // Save audio locally instead of uploading to server
+            await AudioDB.save(res.data.id, blob).catch(() => {});
+            // Update hasAudio flag on the note by updating local state only
+            setSelected(prev => prev?.id === res.data.id ? { ...prev, audioPath: '__local__' } : prev);
+            setNotes(prev => prev.map(n => n.id === res.data.id ? { ...n, audioPath: '__local__' } : n));
             await refresh();
             setWorkspaceNotice({ type: 'success', message: 'Recording transcribed on device and saved.' });
           } else {
@@ -2246,6 +2387,9 @@ function App() {
             onSearch={searchWeb}
             recordingLang={recordingLang}
             onChangeLang={setRecordingLang}
+            micDevices={micDevices}
+            selectedMicId={selectedMicId}
+            onChangeMic={setSelectedMicId}
             deviceTranscribe={deviceTranscribe}
             deviceModelReady={deviceModelReady}
             deviceModelLoading={deviceModelLoading}
@@ -2275,6 +2419,8 @@ function App() {
             onUnlockBiometric={unlockNoteBiometric}
             onLogout={logout}
             onNotice={setWorkspaceNotice}
+            selectedAIModel={selectedAIModel}
+            onChangeAIModel={changeAIModel}
           />
         )}
       </main>

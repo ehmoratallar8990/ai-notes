@@ -8,10 +8,11 @@ let loadedModelId = null;
 
 // ── Model registry ────────────────────────────────────────────────────────────
 export const AI_MODELS = [
-  { id: 'HuggingFaceTB/SmolLM2-135M-Instruct', label: 'SmolLM2 135M', size: '~100 MB', family: 'chatml' },
-  { id: 'HuggingFaceTB/SmolLM2-360M-Instruct', label: 'SmolLM2 360M', size: '~280 MB', family: 'chatml' },
-  { id: 'Qwen/Qwen2.5-0.5B-Instruct',           label: 'Qwen2.5 0.5B',  size: '~400 MB', family: 'chatml' },
-  { id: 'google/gemma-3n-E2B-it',               label: 'Gemma 3n E2B',  size: '~1.3 GB', family: 'gemma'  },
+  { id: 'onnx-community/Qwen3.5-0.8B-ONNX-OPT',     label: 'Qwen3.5 0.8B (GPU)', size: '~800 MB', family: 'chatml', device: 'webgpu' },
+  { id: 'Qwen/Qwen2.5-0.5B-Instruct',               label: 'Qwen2.5 0.5B',       size: '~400 MB', family: 'chatml', device: 'wasm'   },
+  { id: 'HuggingFaceTB/SmolLM2-135M-Instruct',      label: 'SmolLM2 135M',       size: '~100 MB', family: 'chatml', device: 'wasm'   },
+  { id: 'HuggingFaceTB/SmolLM2-360M-Instruct',      label: 'SmolLM2 360M',       size: '~280 MB', family: 'chatml', device: 'wasm'   },
+  { id: 'google/gemma-3n-E2B-it',                   label: 'Gemma 3n E2B',       size: '~1.3 GB', family: 'gemma',  device: 'wasm'   },
 ];
 
 function modelFamily(modelId) {
@@ -19,12 +20,17 @@ function modelFamily(modelId) {
   return 'chatml';
 }
 
+function modelDevice(modelId) {
+  return AI_MODELS.find(m => m.id === modelId)?.device ?? 'wasm';
+}
+
 async function ensureModel(modelId) {
   if (generator && loadedModelId === modelId) return;
   generator = null;
+  const device = modelDevice(modelId);
   generator = await pipeline('text-generation', modelId, {
-    device: 'wasm',
-    dtype: 'q4',
+    device,
+    dtype: device === 'webgpu' ? 'q4f16' : 'q4',
     progress_callback: info => { self.postMessage({ type: 'progress', ...info }); },
   });
   loadedModelId = modelId;

@@ -4,6 +4,7 @@ const MEETING_PATTERNS = [
   { platform: 'zoom-web', test: url => /https:\/\/.*zoom\.us\/wc\//.test(url || '') }
 ];
 let recorder = null;
+let activeStream = null;
 let chunks = [];
 let current = null;
 let recordingStartedAt = null;
@@ -65,6 +66,7 @@ async function sendClip(tab, selectionText) {
 async function startRecording(tabId, meetingUrl) {
   if (recorder) return { success: true, alreadyRecording: true };
   const stream = await chrome.tabCapture.capture({ audio: true, video: false });
+  activeStream = stream;
   chunks = [];
   recordingStartedAt = Date.now();
   current = { tabId, meetingUrl, meetingPlatform: detectMeeting(meetingUrl), startedAt: new Date().toISOString() };
@@ -79,6 +81,8 @@ async function startRecording(tabId, meetingUrl) {
 async function stopRecording() {
   if (!recorder) return { success: true, recording: false };
   recorder.stop();
+  activeStream?.getTracks().forEach(t => t.stop());
+  activeStream = null;
   chrome.action.setBadgeText({ text: '' });
   return { success: true };
 }
@@ -95,5 +99,12 @@ async function uploadRecording() {
   form.append('endedAt', new Date().toISOString());
   try { await fetch(`${backendUrl}/api/extension/recordings`, { method: 'POST', credentials: 'include', body: form }); }
   catch (error) { console.error('Upload failed', error); }
-  finally { recorder = null; current = null; chunks = []; recordingStartedAt = null; }
+  finally {
+    activeStream?.getTracks().forEach(t => t.stop());
+    activeStream = null;
+    recorder = null;
+    current = null;
+    chunks = [];
+    recordingStartedAt = null;
+  }
 }
